@@ -26,8 +26,15 @@ export const TLDS = [
 
 const TLD_GROUP = TLDS.join("|");
 
-const HOST = `\\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:${TLD_GROUP})\\b`;
-const EMAIL = `[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\\.)+(?:${TLD_GROUP})\\b`;
+// Every run below is length capped, and the caps are the real limits rather
+// than arbitrary ones. A DNS label is at most 63 characters and an email local
+// part at most 64. Unbounded runs followed by a required separator backtrack
+// over every start position when the separator never arrives, which turned a
+// 50k run of one character into a 7.7 second scan. A gate that can be made to
+// hang is a gate that gets removed, and a removed gate protects nothing.
+const LABEL = "[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?";
+const HOST = `\\b(?:${LABEL}\\.){1,16}(?:${TLD_GROUP})\\b`;
+const EMAIL = `[A-Za-z0-9._%+-]{1,64}@(?:[A-Za-z0-9-]{1,63}\\.){1,16}(?:${TLD_GROUP})\\b`;
 
 const OCTET = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
 const OCTET_QUAD = `\\b(?:${OCTET}\\.){3}${OCTET}\\b`;
@@ -78,7 +85,7 @@ export const BUILT_IN_DETECTORS = [
       // Both halves spelled out. Requiring both is what keeps "hosted at
       // northwind.example" from reading as an address.
       {
-        pattern: `[A-Za-z0-9._%+-]+\\s+at\\s+[A-Za-z0-9-]+\\s+dot\\s+(?:${TLD_GROUP})\\b`,
+        pattern: `[A-Za-z0-9._%+-]{1,64}\\s+at\\s+[A-Za-z0-9-]{1,63}\\s+dot\\s+(?:${TLD_GROUP})\\b`,
         flags: "gi",
         via: "raw",
       },
@@ -125,14 +132,14 @@ export const BUILT_IN_DETECTORS = [
     as: "[residue]",
     redact: [],
     scan: [
-      { pattern: "[A-Za-z0-9._%+-]+@\\[[a-z][a-z-]*\\]", flags: "g", via: "raw" },
+      { pattern: "[A-Za-z0-9._%+-]{1,64}@\\[[a-z][a-z-]*\\]", flags: "g", via: "raw" },
       { pattern: "\\[[a-z][a-z-]*\\]@[A-Za-z0-9.-]+", flags: "g", via: "raw" },
       { pattern: `\\[[a-z][a-z-]*\\]\\.(?:${TLD_GROUP})\\b`, flags: "g", via: "raw" },
       // The same three shapes over the deobfuscated copy, because an address
       // written as "ada [at] northwind [dot] example" can be half claimed by a
       // roster term the same way a plain one can, and the strict email pattern
       // will never see either half.
-      { pattern: "[A-Za-z0-9._%+-]+@\\[[a-z][a-z-]*\\]", flags: "g", via: "deobfuscate" },
+      { pattern: "[A-Za-z0-9._%+-]{1,64}@\\[[a-z][a-z-]*\\]", flags: "g", via: "deobfuscate" },
       { pattern: "\\[[a-z][a-z-]*\\]@[A-Za-z0-9.-]+", flags: "g", via: "deobfuscate" },
       { pattern: `\\[[a-z][a-z-]*\\]\\.(?:${TLD_GROUP})\\b`, flags: "g", via: "deobfuscate" },
     ],
