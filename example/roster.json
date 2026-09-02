@@ -1,0 +1,12 @@
+{
+  "roster": [
+    { "class": "client", "match": ["Northwind Robotics", "Northwind"] },
+    { "class": "person", "match": ["Ada Vasquez"] },
+    { "class": "custom", "as": "[project]", "match": ["Bluebird"] }
+  ],
+  "allowDomains": ["example.com"],
+  "allow": ["Support"],
+  "extraPatterns": [
+    { "name": "employee_id", "class": "employee", "as": "[employee-id]", "redact": ["EMP-\\d{6}"] }
+  ]
+}

@@ -106,11 +106,11 @@ export function resolveConfig(input = {}) {
   if (input && input[RESOLVED]) return input;
   const cfg = mergeConfigs(input);
 
+  // Order is load bearing. Structured patterns run FIRST, so an address or a
+  // hostname is claimed whole. A roster term running first would substitute
+  // inside the token, break it open, and leave a fragment such as
+  // "ada@[client].example" that no pattern can see any more.
   const detectors = [];
-  cfg.roster.forEach((entry, i) => {
-    const d = rosterDetector(entry, i, cfg.minScanLength);
-    if (d.redact.length) detectors.push(d);
-  });
   for (const spec of cfg.extraPatterns) {
     detectors.push({
       name: spec.name ?? `custom:${detectors.length}`,
@@ -132,6 +132,10 @@ export function resolveConfig(input = {}) {
       scan: compileScan(spec.scan, spec.name),
     });
   }
+  cfg.roster.forEach((entry, i) => {
+    const d = rosterDetector(entry, i, cfg.minScanLength);
+    if (d.redact.length) detectors.push(d);
+  });
 
   const resolved = {
     detectors,

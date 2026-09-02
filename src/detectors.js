@@ -99,6 +99,22 @@ export const BUILT_IN_DETECTORS = [
     scan: [{ pattern: "(?<!\\d)\\d{10,11}(?!\\d)", flags: "g", via: "digits" }],
   },
   {
+    // Scan only, and it looks for damage rather than for data. A placeholder
+    // welded into an address means something was half redacted, and half
+    // redacted text is the one shape no pattern can recognize afterwards. It
+    // carries no redact half on purpose. There is nothing safe to substitute,
+    // the caller has to look.
+    name: "residue",
+    class: "residue",
+    as: "[residue]",
+    redact: [],
+    scan: [
+      { pattern: "[A-Za-z0-9._%+-]+@\\[[a-z][a-z-]*\\]", flags: "g", via: "raw" },
+      { pattern: "\\[[a-z][a-z-]*\\]@[A-Za-z0-9.-]+", flags: "g", via: "raw" },
+      { pattern: `\\[[a-z][a-z-]*\\]\\.(?:${TLD_GROUP})\\b`, flags: "g", via: "raw" },
+    ],
+  },
+  {
     name: "honorific",
     class: "person",
     as: "[person]",
