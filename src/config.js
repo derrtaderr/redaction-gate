@@ -18,6 +18,7 @@ const DEFAULTS = {
   minScanLength: 4,
   revealTerms: true,
   warnOnly: false,
+  onWarn: null,
   audit: { enabled: false, path: null, label: null, algorithm: "sha256" },
 };
 
@@ -138,7 +139,10 @@ export function resolveConfig(input = {}) {
     allowDomains: new Set(cfg.allowDomains.map((s) => s.toLowerCase())),
     minScanLength: cfg.minScanLength,
     revealTerms: cfg.revealTerms !== false,
+    // Strict equality on purpose. A truthy string from an env var or a JSON
+    // typo must not be enough to disarm the gate.
     warnOnly: cfg.warnOnly === true,
+    onWarn: typeof cfg.onWarn === "function" ? cfg.onWarn : null,
     audit: { ...cfg.audit },
     [RESOLVED]: true,
   };

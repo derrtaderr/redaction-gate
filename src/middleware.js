@@ -1,6 +1,6 @@
 import { resolveConfig } from "./config.js";
 import { redactWithCounts } from "./redact.js";
-import { scan, RedactionRefusal } from "./gate.js";
+import { scan, RedactionRefusal, reportWarning } from "./gate.js";
 import { buildRecord, writeRecord } from "./audit.js";
 
 const identityGet = (v) => v;
@@ -40,11 +40,7 @@ export function guard(fn, options = {}) {
     writeRecord(record, cfg);
 
     if (findings.length && !cfg.warnOnly) throw new RedactionRefusal(findings, cfg);
-    if (findings.length) {
-      const err = new RedactionRefusal(findings, cfg);
-      if (onWarn) onWarn(findings, err);
-      else process.stderr.write(`${err.message}\n`);
-    }
+    if (findings.length) reportWarning(findings, onWarn ? { ...cfg, onWarn } : cfg);
 
     const next = [...args];
     next[argIndex] = set(payload, text);

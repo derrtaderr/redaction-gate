@@ -103,5 +103,21 @@ export function assertClean(text, config = {}) {
   const cfg = resolveConfig(config);
   const findings = scan(text, cfg);
   if (findings.length === 0) return text;
+  if (cfg.warnOnly) {
+    reportWarning(findings, cfg);
+    return text;
+  }
   throw new RedactionRefusal(findings, cfg);
+}
+
+/**
+ * warnOnly does not silence anything. It changes what happens next and nothing
+ * else, so a corpus being onboarded can be surveyed without the survey itself
+ * becoming a quiet pass.
+ */
+export function reportWarning(findings, cfg) {
+  const err = new RedactionRefusal(findings, cfg);
+  if (cfg.onWarn) cfg.onWarn(findings, err);
+  else process.stderr.write(`${err.message}\n`);
+  return err;
 }
