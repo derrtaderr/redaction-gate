@@ -1,0 +1,37 @@
+{
+  "name": "redaction-gate",
+  "version": "0.1.0",
+  "description": "Redaction that refuses the write when it misses. Asymmetric redactor and detector, zero dependencies.",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": "./src/index.js"
+  },
+  "bin": {
+    "redaction-gate": "./bin/redaction-gate.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "SPEC.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "keywords": [
+    "redaction",
+    "pii",
+    "gdpr",
+    "soc2",
+    "compliance",
+    "llm",
+    "middleware"
+  ],
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {}
+}
