@@ -1,0 +1,93 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, writeFileSync, readFileSync, existsSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const BIN = fileURLToPath(new URL("../bin/redaction-gate.js", import.meta.url));
+const dir = mkdtempSync(join(tmpdir(), "rg-cli-"));
+const CONFIG = join(dir, "rg.json");
+writeFileSync(CONFIG, JSON.stringify({ roster: [{ class: "client", match: ["Northwind Robotics"] }] }));
+
+const run = (args, input = "") =>
+  spawnSync(process.execPath, [BIN, ...args], { input, encoding: "utf8" });
+
+test("check exits 0 on clean input", () => {
+  const r = run(["check", "--config", CONFIG], "a sentence with nothing in it\n");
+  assert.equal(r.status, 0);
+});
+
+test("check exits 2 and names the class when redaction would have missed", () => {
+  const r = run(["check", "--config", CONFIG], "filed under northwind_robotics/notes\n");
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /client/);
+  assert.match(r.stderr, /stdin:1:13/, "the position is editor-clickable");
+});
+
+test("redact writes the redacted text to stdout", () => {
+  const r = run(["redact", "--config", CONFIG], "the Northwind Robotics renewal\n");
+  assert.equal(r.status, 0);
+  assert.equal(r.stdout, "the [client] renewal\n");
+});
+
+test("redact emits nothing on stdout when the gate refuses", () => {
+  const r = run(["redact", "--config", CONFIG], "filed under northwind_robotics/notes\n");
+  assert.equal(r.status, 2);
+  assert.equal(r.stdout, "");
+});
+
+test("a file path is read and named in the report", () => {
+  const f = join(dir, "notes.txt");
+  writeFileSync(f, "line one\nfiled under northwind_robotics\n");
+  const r = run(["check", "--config", CONFIG, f]);
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /notes\.txt/);
+  assert.match(r.stderr, /notes\.txt:2:13/);
+});
+
+test("json output is machine readable", () => {
+  const r = run(["check", "--config", CONFIG, "--json"], "filed under northwind_robotics\n");
+  assert.equal(r.status, 2);
+  const out = JSON.parse(r.stdout);
+  assert.equal(out.ok, false);
+  assert.equal(out.findings[0].class, "client");
+});
+
+test("warn-only alone still exits non-zero, and needs a second flag to go quiet", () => {
+  const warn = run(["check", "--config", CONFIG, "--warn-only"], "northwind_robotics\n");
+  assert.equal(warn.status, 2);
+  const silent = run(["check", "--config", CONFIG, "--warn-only", "--exit-zero"], "northwind_robotics\n");
+  assert.equal(silent.status, 0);
+  assert.match(silent.stderr, /client/, "the findings are still reported");
+});
+
+test("no-reveal keeps the term out of the output stream", () => {
+  const r = run(["check", "--config", CONFIG, "--no-reveal"], "northwind_robotics\n");
+  assert.ok(!r.stderr.includes("northwind_robotics"));
+  assert.match(r.stderr, /client/);
+});
+
+test("the audit flag writes a compliance record", () => {
+  const path = join(dir, "audit.jsonl");
+  const r = run(["check", "--config", CONFIG, "--audit", path, "--label", "pre-commit"], "northwind_robotics\n");
+  assert.equal(r.status, 2);
+  assert.ok(existsSync(path));
+  const row = JSON.parse(readFileSync(path, "utf8").trim());
+  assert.equal(row.outcome, "refused");
+  assert.equal(row.label, "pre-commit");
+  assert.ok(!JSON.stringify(row).includes("northwind_robotics"));
+});
+
+test("help and version exit clean", () => {
+  assert.equal(run(["--help"]).status, 0);
+  const v = run(["--version"]);
+  assert.equal(v.status, 0);
+  assert.match(v.stdout, /\d+\.\d+\.\d+/);
+});
+
+test("an unknown flag is a usage error, not a silent pass", () => {
+  const r = run(["check", "--nope"], "text\n");
+  assert.equal(r.status, 1);
+});
