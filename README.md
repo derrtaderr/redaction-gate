@@ -134,6 +134,26 @@ const ask = guard(client.messages.create, {
 Detectors are data. A roster is a JSON file you own, and a new pattern is a new record rather
 than a code change.
 
+The same shape works inline and in a file, and `roster` is an **array of entries** in both. Each
+entry names its `class` and carries a `match` array. An object keyed by class is the shape most
+people try first, and it is refused with a message that shows the array form.
+
+```js
+import { createGate } from "redaction-gate";
+
+const gate = createGate({
+  roster: [
+    { class: "client", match: ["Northwind Robotics", "Northwind"] },
+    { class: "person", match: ["Ada Vasquez"] },
+    { class: "custom", as: "[project]", match: ["Bluebird"] },
+  ],
+  allowDomains: ["example.com"],
+  audit: { enabled: true, path: "logs/compliance.jsonl" },
+});
+```
+
+The identical config as a file, loaded with `loadConfig(["redaction-gate.config.json"])`.
+
 ```json
 {
   "roster": [
@@ -164,9 +184,26 @@ than a code change.
 | `warnOnly` | See below. |
 | `audit` | The compliance log. |
 
-Built-in detectors are `secret`, `email`, `domain`, `residue`, `phone` and `honorific`. The
-`residue` one is scan only. It looks for a placeholder welded into an address, which is the
+Built-in detectors are `secret`, `email`, `domain`, `phone`, `ipv4`, `residue` and `honorific`.
+The `residue` one is scan only. It looks for a placeholder welded into an address, which is the
 signature of a half redaction.
+
+### A wrong config refuses, it does not crash
+
+Misconfiguration is the quietest way to end up unprotected, so the config is checked before
+anything is merged and every problem is reported at once.
+
+```
+redaction-gate: REFUSING TO CONFIGURE. 1 problem in the config.
+  roster  expected an array of roster entries, received an object with key "client"
+          try  "roster": [{ "class": "client", "match": ["Northwind"] }]
+Nothing was redacted and nothing was checked.
+```
+
+The error is a `RedactionConfigError` with `code: "REDACTION_CONFIG_INVALID"` and a `problems`
+array. An unknown top-level key is refused rather than ignored, because a setting that quietly
+does nothing is how you end up believing you configured something you did not. On the CLI, a
+`--config` path that does not exist is an error for the same reason.
 
 ## Refusal is the default
 
@@ -247,10 +284,14 @@ Read this part. The failure mode of a security tool is a team that trusts it fur
   non-Latin names are not normalized. A roster term written in Cyrillic lookalikes will pass.
 - **It does not parse formats.** It takes text. A PDF, an image, a zip or a base64 blob is opaque
   to it, and text inside a nested encoding is not decoded before scanning.
-- **It has no rate or size strategy.** Everything is synchronous and in memory. It is not built
-  for streaming a multi-gigabyte file.
-- **Credit card numbers, national IDs and IPs are not detected.** They were out of scope for the
-  first version. Add them through `extraPatterns` if you need them.
+- **It is synchronous and in memory.** Pattern runs are length capped so a large or hostile input
+  cannot make it hang, and the suite holds the full detector set to a two second budget on
+  deliberately pathological inputs. It is still not built for streaming a multi-gigabyte file.
+- **Credit card numbers and national IDs are not detected.** IPv4 is, because an IP address is
+  personal data under GDPR. The other two are country-specific and checksum-shaped, and a
+  half-right implementation of them is worse than an honest gap. Add them through
+  `extraPatterns` if you need them.
+- **IPv6 is not detected.** Only IPv4.
 - **It is not a certification.** See the compliance log section.
 
 ## Development

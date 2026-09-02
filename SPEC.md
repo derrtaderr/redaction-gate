@@ -110,6 +110,7 @@ compliance log, and `revealTerms: false` reduces it to a class and a position.
 | `phone` | separated 10 or 11 digit forms with an optional country code | any 10 or 11 digit run once dashes, brackets and dots are removed |
 | `secret` | known prefixes such as `sk-`, `ghp_`, `AKIA`, `xox`, JWTs, and assignment-gated high entropy strings | the same shapes once whitespace, including a line wrap, is removed |
 | `honorific` | `Dr. Ada Vasquez` with the period and space | `Dr Vasquez` and `Dr.Vasquez` |
+| `ipv4` | dotted quads with range-checked octets | the defanged `203[.]0[.]113[.]42` form |
 | `residue` | nothing, it has no redact half | a placeholder welded into an address, in raw or deobfuscated form |
 
 Roster entries and extra patterns are supplied as config, so the detector set is data. A user
@@ -182,6 +183,39 @@ Field rules, all binding.
   force on a given day without the log carrying the roster.
 - `outcome` is one of `clean`, `redacted`, `refused`, `warned`.
 
+## 7b. Config refusal
+
+Misconfiguration is the quietest way to end up unprotected, so the same posture applies to the
+config itself. Every source is validated before anything is merged, which means a bad config can
+never be half applied, and every problem is reported at once the way findings are.
+
+```
+redaction-gate: REFUSING TO CONFIGURE. 1 problem in the config.
+  roster  expected an array of roster entries, received an object with key "client"
+          try  "roster": [{ "class": "client", "match": ["Northwind"] }]
+Nothing was redacted and nothing was checked.
+```
+
+Binding rules.
+
+- An unknown top-level key is a refusal, not a shrug. A setting that quietly does nothing is how
+  a caller ends up believing they configured something they did not.
+- `warnOnly` and `revealTerms` refuse a non-boolean. Ignoring `warnOnly: "true"` left the caller
+  believing the gate was disarmed when it was not, and the reverse misunderstanding is worse.
+- The suggested fix is built from what the caller actually wrote, not from a static example.
+- `loadConfig` validates per file, so the message names the file with the problem.
+
+## 7c. Bounded matching
+
+Every pattern run is length capped, and the caps are the real limits rather than arbitrary ones.
+A DNS label is at most 63 characters, an email local part at most 64. Unbounded runs followed by
+a required separator backtrack over every start position when the separator never arrives, and a
+100k run of one character took 7.9 seconds to scan before this was fixed.
+
+This is a refusal problem rather than a performance nicety. A gate that can be made to hang is a
+gate that gets removed, and a removed gate protects nothing. The suite holds the full detector
+set to a two second budget on inputs designed to be pathological.
+
 ## 8. Non-goals
 
 - Not a classifier. There is no model, no entropy scoring beyond one narrow assignment-gated
@@ -190,6 +224,9 @@ Field rules, all binding.
 - Not reversible. Placeholders are typed, not keyed. There is no un-redact.
 - Not a database or file scanner. It takes text.
 - Not certification. See section 7.
+- Credit cards and national IDs are absent on purpose. They are country-specific and
+  checksum-shaped, and a half-right implementation reads as coverage while providing none. IPv4
+  is present because an IP address is personal data under GDPR. IPv6 is not.
 
 ## 9. Acceptance
 
