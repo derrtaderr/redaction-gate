@@ -50,6 +50,15 @@ test("an ordinary placeholder in clean prose is not residue", () => {
   assert.equal(assertClean(clean, CFG), clean);
 });
 
+test("an obfuscated address half claimed by a roster term is still residue", () => {
+  // "ada [at] northwind [dot] example" is not matchable by the strict email
+  // pattern, and the roster claims the middle of it, leaving the local part
+  // behind in a form nothing else recognizes.
+  const out = redact("write to ada [at] northwind [dot] example", CFG);
+  assert.ok(out.includes("ada [at]"), "redact was expected to leave the local part");
+  assert.throws(() => assertClean(out, CFG), /residue/);
+});
+
 test("a markdown link is not residue", () => {
   const clean = "see [the docs](https://docs.test/guide) for more";
   assert.equal(scan(clean, { ...CFG, allowDomains: ["docs.test"] }).length, 0);

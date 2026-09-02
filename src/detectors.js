@@ -112,6 +112,13 @@ export const BUILT_IN_DETECTORS = [
       { pattern: "[A-Za-z0-9._%+-]+@\\[[a-z][a-z-]*\\]", flags: "g", via: "raw" },
       { pattern: "\\[[a-z][a-z-]*\\]@[A-Za-z0-9.-]+", flags: "g", via: "raw" },
       { pattern: `\\[[a-z][a-z-]*\\]\\.(?:${TLD_GROUP})\\b`, flags: "g", via: "raw" },
+      // The same three shapes over the deobfuscated copy, because an address
+      // written as "ada [at] northwind [dot] example" can be half claimed by a
+      // roster term the same way a plain one can, and the strict email pattern
+      // will never see either half.
+      { pattern: "[A-Za-z0-9._%+-]+@\\[[a-z][a-z-]*\\]", flags: "g", via: "deobfuscate" },
+      { pattern: "\\[[a-z][a-z-]*\\]@[A-Za-z0-9.-]+", flags: "g", via: "deobfuscate" },
+      { pattern: `\\[[a-z][a-z-]*\\]\\.(?:${TLD_GROUP})\\b`, flags: "g", via: "deobfuscate" },
     ],
   },
   {
