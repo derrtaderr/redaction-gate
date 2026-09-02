@@ -9,8 +9,8 @@
  *   1  usage or I/O error
  *   2  REFUSED. Something survived redaction.
  */
-import { readFileSync } from "node:fs";
-import { loadConfig, resolveConfig } from "../src/config.js";
+import { existsSync, readFileSync } from "node:fs";
+import { loadConfig } from "../src/config.js";
 import { redactWithCounts } from "../src/redact.js";
 import { scan, reportWarning } from "../src/gate.js";
 import { buildRecord, writeRecord, VERSION } from "../src/audit.js";
@@ -98,6 +98,16 @@ function main(argv) {
   if (opts.command !== "check" && opts.command !== "redact") {
     process.stderr.write(`redaction-gate: unknown command "${opts.command}"\n\n${USAGE}`);
     return 1;
+  }
+
+  // A typo in --config would otherwise load an empty roster, find nothing, and
+  // exit 0 looking exactly like a clean run. That is the silent pass this
+  // library exists to remove, so an explicitly named config has to be there.
+  for (const path of opts.configs) {
+    if (!existsSync(path)) {
+      process.stderr.write(`redaction-gate: config not found at ${path}\n`);
+      return 1;
+    }
   }
 
   let cfg;

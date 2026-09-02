@@ -91,3 +91,11 @@ test("an unknown flag is a usage error, not a silent pass", () => {
   const r = run(["check", "--nope"], "text\n");
   assert.equal(r.status, 1);
 });
+
+test("a config path that does not exist is an error, not a quiet under-protection", () => {
+  // The worst outcome available to this CLI. A typo in --config would load an
+  // empty roster, find nothing, and exit 0 looking exactly like a clean run.
+  const r = run(["check", "--config", join(dir, "typo.json")], "filed under northwind_robotics\n");
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /typo\.json/);
+});
