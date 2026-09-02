@@ -98,3 +98,11 @@ test("the gate is what stands between a miss and a write", () => {
   }
   assert.equal(wrote, false);
 });
+
+test("ip, a defanged address slips the strict pattern and is refused", (t) => {
+  // The form every security write-up uses so a reader cannot click it.
+  missedThenCaught(t, "beacon traffic to 203[.]0[.]113[.]42 all week", {
+    survives: "203[.]0[.]113[.]42",
+    cls: "ip",
+  });
+});

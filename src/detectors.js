@@ -25,8 +25,12 @@ export const TLDS = [
 ];
 
 const TLD_GROUP = TLDS.join("|");
+
 const HOST = `\\b(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\\.)+(?:${TLD_GROUP})\\b`;
 const EMAIL = `[A-Za-z0-9._%+-]+@(?:[A-Za-z0-9-]+\\.)+(?:${TLD_GROUP})\\b`;
+
+const OCTET = "(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)";
+const OCTET_QUAD = `\\b(?:${OCTET}\\.){3}${OCTET}\\b`;
 
 // The one entropy rule in the library, and it is gated on an assignment rather
 // than on entropy alone. A bare 40 character hex string is a git sha far more
@@ -97,6 +101,18 @@ export const BUILT_IN_DETECTORS = [
     // Strip the separators and a phone number is a run of ten or eleven digits,
     // whatever exotic dash it was pasted with.
     scan: [{ pattern: "(?<!\\d)\\d{10,11}(?!\\d)", flags: "g", via: "digits" }],
+  },
+  {
+    // An IP address is personal data under GDPR, which is why it is here and
+    // why credit cards and national IDs are not. Octets are range checked, so
+    // "2026.01.04" and "v1.22.3" cannot pass for one.
+    name: "ipv4",
+    class: "ip",
+    as: "[ip]",
+    redact: [{ pattern: OCTET_QUAD, flags: "g" }],
+    // Same shape over the deobfuscated copy, which is what catches the defanged
+    // form every security write-up uses so a reader cannot click it.
+    scan: [{ pattern: OCTET_QUAD, flags: "g", via: "deobfuscate" }],
   },
   {
     // Scan only, and it looks for damage rather than for data. A placeholder

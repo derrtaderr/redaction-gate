@@ -75,3 +75,12 @@ test("a caller-supplied pattern behaves like a built-in", () => {
   };
   assert.equal(redact("assigned to EMP-004182", cfg), "assigned to [employee-id]");
 });
+
+test("ip, a v4 address is replaced", () => {
+  assert.equal(redact("request came from 203.0.113.42 twice", CFG), "request came from [ip] twice");
+});
+
+test("ip, version strings and dotted dates do not trip it", () => {
+  const src = "upgraded to v1.22.3 on 2026.01.04 with build 10.15";
+  assert.equal(redact(src, CFG), src);
+});
