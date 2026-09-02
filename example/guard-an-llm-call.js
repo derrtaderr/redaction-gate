@@ -8,6 +8,7 @@
  * The first call goes through with placeholders. The second one does not go at
  * all, because the redactor missed and the gate caught what it missed.
  */
+import { fileURLToPath } from "node:url";
 import { createGate, loadConfig } from "../src/index.js";
 
 // Pretend this posts to a model API. It records what it was actually handed,
@@ -18,7 +19,7 @@ async function callTheModel(prompt) {
   return `model saw ${prompt.length} chars`;
 }
 
-const config = loadConfig([new URL("./roster.json", import.meta.url).pathname], {
+const config = loadConfig([fileURLToPath(new URL("./roster.json", import.meta.url))], {
   audit: { enabled: true, path: "tmp/compliance.jsonl", label: "example" },
 });
 const gate = createGate(config);

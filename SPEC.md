@@ -1,4 +1,4 @@
-# redaction-gate — spec
+# redaction-gate spec
 
 A redaction library that refuses the write when redaction misses.
 
@@ -19,12 +19,12 @@ success from the outside.
 This library makes them different. A miss is loud, it is a thrown refusal, and the wrapped call
 does not run.
 
-## 2. Origin — what was extracted and what was generalized
+## 2. Origin. What was extracted and what was generalized
 
-The capability shipped 2026-09-01 inside a private vault script that harvested working sessions
-into a story bank. That script had to write files that could never contain a client or prospect
-name, and a warning was not good enough, because the file would still be on disk. So the write
-path ended in a hard gate.
+The capability shipped 2026-09-01 inside a private internal script that harvested working
+sessions into a searchable record. That script had to write files that could never contain a
+client or prospect name, and a warning was not good enough, because the file would still be on
+disk. So the write path ended in a hard gate.
 
 Extracted from that implementation, essentially verbatim in behaviour:
 
@@ -53,10 +53,13 @@ Added, with no counterpart in the original:
 - An append-only compliance log with a hashed source and no source text.
 - A CLI with exit codes for CI and pre-commit hooks.
 - A `warnOnly` escape hatch, described in section 6.
+- A `residue` detector, which the original did not need because it had one entity class. Once
+  roster terms and structured patterns coexist, a roster term can be substituted inside an
+  address and break it open, and the fragment that survives matches nothing. See section 5.
 
 ## 3. The asymmetry, and why it is the whole design
 
-The first version of the vault implementation used one matcher for both jobs. Redact and check
+The first version of the original implementation used one matcher for both jobs. Redact and check
 shared a regex. That is the obvious design and it is worthless, because the check can only look
 for the thing the redactor already replaced. Every run passed. A verification that cannot return
 a failure is not a verification, it is a decoration.
@@ -89,7 +92,7 @@ scan(text, config)            // -> findings[], never throws
 assertClean(text, config)     // -> text, or throws RedactionRefusal
 guard(fn, options)            // -> wrapped fn that redacts, asserts, then calls fn
 createGate(config)            // -> { redact, scan, assertClean, guard } bound to one config
-loadConfig(paths)             // -> merged config from JSON files
+loadConfig(paths, overrides)  // -> merged config from JSON files
 ```
 
 A finding is `{ class, term, index, line, column, length, detector }`. `term` is the matched
@@ -104,12 +107,24 @@ compliance log, and `revealTerms: false` reduces it to a class and a position.
 | `client`, `person`, `custom` | roster terms on word boundaries | glued, joined and punctuated forms of the same terms |
 | `email` | `local@domain.tld` | `name [at] domain [dot] tld` and its variants |
 | `domain` | `host.tld` on a known TLD list | defanged forms such as `host[.]tld` |
-| `phone` | separated 7 to 11 digit forms | any 10 or 11 digit run once dashes, brackets and dots are removed |
-| `secret` | known prefixes such as `sk-`, `ghp_`, `AKIA`, `xox`, JWTs, and assignment-gated high entropy strings | the same shapes after whitespace, including a line wrap, is removed |
+| `phone` | separated 10 or 11 digit forms with an optional country code | any 10 or 11 digit run once dashes, brackets and dots are removed |
+| `secret` | known prefixes such as `sk-`, `ghp_`, `AKIA`, `xox`, JWTs, and assignment-gated high entropy strings | the same shapes once whitespace, including a line wrap, is removed |
 | `honorific` | `Dr. Ada Vasquez` with the period and space | `Dr Vasquez` and `Dr.Vasquez` |
+| `residue` | nothing, it has no redact half | a placeholder welded into an address, in raw or deobfuscated form |
 
 Roster entries and extra patterns are supplied as config, so the detector set is data. A user
 adds an employee id format by adding a record, not by opening a source file.
+
+Ordering is load bearing. Structured patterns run before roster terms, so an address or a
+hostname is claimed whole. A roster term running first substitutes inside the token, breaks it
+open, and leaves a fragment such as `ada@[client].example` that no pattern can see any more.
+`residue` is the backstop for the cases where that still happens, and it has no redact half
+because there is nothing safe to substitute into damaged text.
+
+The `secret` assignment rule deliberately does NOT run against the despaced copy. Removing
+spaces glues ordinary prose into one long run, and "the token is a placeholder for something"
+would then refuse every document that discusses tokens. The paranoid half is allowed to
+over-flag, but not to the point where a team switches the gate off.
 
 ## 6. Refusal posture
 
@@ -133,8 +148,8 @@ There is no config value that produces a clean exit and an empty log while findi
 
 ## 7. Compliance log
 
-Append-only JSONL, one record per gate event, written with an exclusive append so concurrent
-processes do not interleave. The row this build serves names SOC 2 and GDPR. This library is not
+Append-only JSONL, one record per gate event, each written in a single append so a record is
+never split. The row this build serves names SOC 2 and GDPR. This library is not
 a certification and does not claim one. It produces the artifact those reviews ask for, which is
 a durable record showing that a control ran, what it found, and what the system did next, with
 no copy of the sensitive data inside the record.

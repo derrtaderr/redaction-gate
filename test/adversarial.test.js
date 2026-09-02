@@ -24,49 +24,49 @@ function missedThenCaught(t, input, { survives, cls }, cfg = CFG) {
   assert.equal(scan(out, cfg)[0].class, cls);
 }
 
-test("roster — an underscored form slips word-boundary substitution and is refused", (t) => {
+test("roster, an underscored form slips word-boundary substitution and is refused", (t) => {
   missedThenCaught(t, "filed under northwind_robotics/notes", {
     survives: "northwind_robotics",
     cls: "client",
   });
 });
 
-test("roster — a glued form slips substitution and is refused", (t) => {
+test("roster, a glued form slips substitution and is refused", (t) => {
   missedThenCaught(t, "see NorthwindRobotics on the board", {
     survives: "NorthwindRobotics",
     cls: "client",
   });
 });
 
-test("roster — a hyphenated form slips substitution and is refused", (t) => {
+test("roster, a hyphenated form slips substitution and is refused", (t) => {
   missedThenCaught(t, "the Northwind-Robotics renewal", {
     survives: "Northwind-Robotics",
     cls: "client",
   });
 });
 
-test("email — a bracketed address slips the strict pattern and is refused", (t) => {
+test("email, a bracketed address slips the strict pattern and is refused", (t) => {
   missedThenCaught(t, "reach ada [at] northwind [dot] example today", {
     survives: "[at]",
     cls: "email",
   });
 });
 
-test("email — an all-words address slips the strict pattern and is refused", (t) => {
+test("email, an all-words address slips the strict pattern and is refused", (t) => {
   missedThenCaught(t, "reach ada at northwind dot example today", {
     survives: "ada at northwind dot example",
     cls: "email",
   });
 });
 
-test("domain — a defanged host slips the strict pattern and is refused", (t) => {
+test("domain, a defanged host slips the strict pattern and is refused", (t) => {
   missedThenCaught(t, "traffic came from northwind[.]example", {
     survives: "northwind[.]example",
     cls: "domain",
   });
 });
 
-test("phone — a Unicode minus slips the strict pattern and is refused", (t) => {
+test("phone, a Unicode minus slips the strict pattern and is refused", (t) => {
   // U+2212. Word processors and PDF copy-paste produce this constantly.
   missedThenCaught(t, "call 555−018−3921 today", {
     survives: "555−018−3921",
@@ -74,14 +74,14 @@ test("phone — a Unicode minus slips the strict pattern and is refused", (t) =>
   });
 });
 
-test("secret — a key wrapped across a line slips every pattern and is refused", (t) => {
+test("secret, a key wrapped across a line slips every pattern and is refused", (t) => {
   missedThenCaught(t, "OPENAI_API_KEY=sk-abcdefghij\n  klmnop1234\n", {
     survives: "sk-abcdefghij",
     cls: "secret",
   });
 });
 
-test("person — an honorific without its period slips substitution and is refused", (t) => {
+test("person, an honorific without its period slips substitution and is refused", (t) => {
   missedThenCaught(t, "Dr Vasquez signed off", { survives: "Dr Vasquez", cls: "person" });
 });
 

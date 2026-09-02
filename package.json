@@ -13,8 +13,10 @@
   "files": [
     "src",
     "bin",
+    "example",
     "SPEC.md",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "engines": {
     "node": ">=20"

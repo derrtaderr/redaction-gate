@@ -116,6 +116,12 @@ function main(argv) {
   try {
     if (opts.files.length) {
       for (const file of opts.files) inputs.push({ source: file, text: readFileSync(file, "utf8") });
+    } else if (process.stdin.isTTY) {
+      // Nothing to read and nothing piped in. Blocking on an interactive
+      // terminal here would look like a hang, and a hang gets killed and
+      // retried without the gate.
+      process.stderr.write(`redaction-gate: no files given and nothing on stdin\n\n${USAGE}`);
+      return 1;
     } else {
       inputs.push({ source: "stdin", text: readStdin() });
     }
