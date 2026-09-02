@@ -13,7 +13,11 @@ const BASE = { roster: [{ class: "client", match: ["Northwind Robotics"] }] };
 test("warnOnly is off at every level unless it is asked for", () => {
   assert.equal(resolveConfig({}).warnOnly, false);
   assert.equal(resolveConfig({ roster: [] }).warnOnly, false);
-  assert.equal(resolveConfig({ warnOnly: "yes" }).warnOnly, false, "only a real true disarms the gate");
+  // A truthy string used to resolve quietly to false, which left a caller who
+  // wrote warnOnly: "true" believing the gate was disarmed when it was not.
+  // Refusing is louder than ignoring, and only a literal true disarms it.
+  assert.throws(() => resolveConfig({ warnOnly: "yes" }), /REFUSING TO CONFIGURE/);
+  assert.equal(resolveConfig({ warnOnly: true }).warnOnly, true);
 });
 
 test("warnOnly returns the text instead of throwing", () => {

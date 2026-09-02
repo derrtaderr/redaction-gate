@@ -25,11 +25,201 @@ const DEFAULTS = {
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const flatten = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+const KNOWN_KEYS = Object.keys(DEFAULTS);
+
+/**
+ * Thrown when the config itself is wrong.
+ *
+ * A library whose whole thesis is "refuse loudly rather than fail confusingly"
+ * cannot have a front door that throws an internal TypeError naming neither the
+ * offending key nor the expected shape. Worse, a caller who wraps setup in a
+ * try/catch to be careful would then see a misconfigured gate as an unrelated
+ * runtime error rather than as a policy problem.
+ */
+export class RedactionConfigError extends Error {
+  constructor(problems, origin) {
+    const width = Math.max(...problems.map((p) => p.key.length));
+    const lines = problems.flatMap((p) => {
+      const head = `  ${p.key.padEnd(width)}  ${p.detail}`;
+      return p.hint ? [head, `  ${" ".repeat(width)}  try  ${p.hint}`] : [head];
+    });
+    super(
+      `redaction-gate: REFUSING TO CONFIGURE. ${problems.length} problem${problems.length === 1 ? "" : "s"} in ${origin}.\n` +
+        lines.join("\n") +
+        `\nNothing was redacted and nothing was checked.`
+    );
+    this.name = "RedactionConfigError";
+    this.code = "REDACTION_CONFIG_INVALID";
+    this.problems = problems;
+  }
+}
+
+function describe(value) {
+  if (value === null) return "null";
+  if (Array.isArray(value)) return "an array";
+  if (typeof value === "object") {
+    const keys = Object.keys(value);
+    const shown = keys.slice(0, 3).map((k) => `"${k}"`).join(", ");
+    if (!keys.length) return "an empty object";
+    return `an object with key${keys.length === 1 ? "" : "s"} ${shown}`;
+  }
+  return `a ${typeof value}`;
+}
+
+/** Cheap edit distance, only ever run against ten known keys. */
+function nearest(key, candidates) {
+  const distance = (a, b) => {
+    const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
+    for (let j = 0; j <= b.length; j++) d[0][j] = j;
+    for (let i = 1; i <= a.length; i++) {
+      for (let j = 1; j <= b.length; j++) {
+        d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      }
+    }
+    return d[a.length][b.length];
+  };
+  let best = null;
+  let bestScore = 3;
+  for (const c of candidates) {
+    const score = distance(key.toLowerCase(), c.toLowerCase());
+    if (score < bestScore) {
+      best = c;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
+/** Builds the suggested roster from what the caller actually wrote. */
+function rosterHint(value) {
+  const [key, terms] = Object.entries(value)[0] ?? ["client", ["Northwind"]];
+  const list = Array.isArray(terms) ? terms : [String(terms)];
+  return `"roster": [{ "class": ${JSON.stringify(key)}, "match": ${JSON.stringify(list)} }]`;
+}
+
+const isArrayOfStrings = (v) => Array.isArray(v) && v.every((s) => typeof s === "string");
+
+/**
+ * Checks one config source and refuses with every problem at once, the same way
+ * a refusal reports every finding at once. Runs before anything is merged, so a
+ * bad config can never be half applied.
+ */
+export function validateSource(src, origin = "the config") {
+  const problems = [];
+  const add = (key, detail, hint) => problems.push({ key, detail, hint });
+
+  if (src === null || typeof src !== "object" || Array.isArray(src)) {
+    throw new RedactionConfigError(
+      [{ key: "config", detail: `expected an object, received ${describe(src)}`, hint: `{ "roster": [] }` }],
+      origin
+    );
+  }
+
+  for (const key of Object.keys(src)) {
+    if (KNOWN_KEYS.includes(key)) continue;
+    const guess = nearest(key, KNOWN_KEYS);
+    add(key, `is not a setting this library reads${guess ? `, did you mean "${guess}"` : ""}`, `one of ${KNOWN_KEYS.join(", ")}`);
+  }
+
+  if ("roster" in src) {
+    if (!Array.isArray(src.roster)) {
+      add(
+        "roster",
+        `expected an array of roster entries, received ${describe(src.roster)}`,
+        src.roster && typeof src.roster === "object" ? rosterHint(src.roster) : `"roster": [{ "class": "client", "match": ["Northwind"] }]`
+      );
+    } else {
+      src.roster.forEach((entry, i) => {
+        if (entry === null || typeof entry !== "object" || Array.isArray(entry)) {
+          add(`roster[${i}]`, `expected an entry object, received ${describe(entry)}`, `{ "class": "client", "match": ["Northwind"] }`);
+          return;
+        }
+        if (typeof entry.class !== "string" || !entry.class.length) {
+          add(
+            `roster[${i}].class`,
+            entry.class === undefined ? "is missing, and every entry names the class its placeholder comes from" : `expected a string, received ${describe(entry.class)}`,
+            `{ "class": "client", "match": ["Northwind"] }`
+          );
+        }
+        const match = entry.match ?? entry.terms;
+        if (match === undefined) {
+          add(`roster[${i}].match`, "is missing, and an entry with no terms redacts nothing", `{ "class": "client", "match": ["Northwind"] }`);
+        } else if (!isArrayOfStrings(match)) {
+          add(
+            `roster[${i}].match`,
+            `expected an array of strings, received ${describe(match)}`,
+            typeof match === "string" ? `"match": ${JSON.stringify([match])}` : `"match": ["Northwind"]`
+          );
+        }
+      });
+    }
+  }
+
+  for (const key of ["allow", "allowDomains"]) {
+    if (key in src && !isArrayOfStrings(src[key])) {
+      add(key, `expected an array of strings, received ${describe(src[key])}`, typeof src[key] === "string" ? `"${key}": ${JSON.stringify([src[key]])}` : `"${key}": []`);
+    }
+  }
+
+  if ("extraPatterns" in src) {
+    if (!Array.isArray(src.extraPatterns)) {
+      add("extraPatterns", `expected an array of detector records, received ${describe(src.extraPatterns)}`, `"extraPatterns": [{ "name": "employee_id", "class": "employee", "redact": ["EMP-\\\\d{6}"] }]`);
+    } else {
+      src.extraPatterns.forEach((spec, i) => {
+        if (spec === null || typeof spec !== "object" || Array.isArray(spec)) {
+          add(`extraPatterns[${i}]`, `expected a detector record, received ${describe(spec)}`);
+        } else if (!Array.isArray(spec.redact) || !spec.redact.length) {
+          add(`extraPatterns[${i}].redact`, spec.redact === undefined ? "is missing, and a detector with no redact half substitutes nothing" : `expected a non-empty array of patterns, received ${describe(spec.redact)}`, `"redact": ["EMP-\\\\d{6}"]`);
+        }
+      });
+    }
+  }
+
+  if ("patterns" in src) {
+    if (src.patterns === null || typeof src.patterns !== "object" || Array.isArray(src.patterns)) {
+      add("patterns", `expected an object of detector switches, received ${describe(src.patterns)}`, `"patterns": { "phone": false }`);
+    } else {
+      for (const [name, value] of Object.entries(src.patterns)) {
+        if (typeof value !== "boolean") add(`patterns.${name}`, `expected a boolean, received ${describe(value)}`, `"${name}": false`);
+      }
+    }
+  }
+
+  for (const key of ["warnOnly", "revealTerms"]) {
+    // A truthy string used to be ignored quietly, which meant a caller who
+    // wrote warnOnly: "true" believed the gate was disarmed when it was not.
+    // Either direction of that misunderstanding is worth refusing over.
+    if (key in src && typeof src[key] !== "boolean") {
+      add(key, `expected a boolean, received ${describe(src[key])}`, `"${key}": true`);
+    }
+  }
+
+  if ("minScanLength" in src && (typeof src.minScanLength !== "number" || !Number.isInteger(src.minScanLength) || src.minScanLength < 1)) {
+    add("minScanLength", `expected a positive whole number, received ${describe(src.minScanLength)}`, `"minScanLength": 4`);
+  }
+
+  if ("onWarn" in src && src.onWarn !== null && typeof src.onWarn !== "function") {
+    add("onWarn", `expected a function, received ${describe(src.onWarn)}`);
+  }
+
+  if ("audit" in src) {
+    if (src.audit === null || typeof src.audit !== "object" || Array.isArray(src.audit)) {
+      add("audit", `expected an object, received ${describe(src.audit)}`, `"audit": { "enabled": true, "path": "logs/compliance.jsonl" }`);
+    } else if (src.audit.enabled === true && typeof src.audit.path !== "string") {
+      add("audit.path", `is required when audit.enabled is true, received ${describe(src.audit.path)}`, `"path": "logs/compliance.jsonl"`);
+    }
+  }
+
+  if (problems.length) throw new RedactionConfigError(problems, origin);
+  return src;
+}
+
 /** Later files win on scalars. Lists append, because a roster is additive. */
 export function mergeConfigs(...sources) {
   const out = { ...DEFAULTS, audit: { ...DEFAULTS.audit }, roster: [], extraPatterns: [], allow: [], allowDomains: [], patterns: {} };
   for (const src of sources) {
     if (!src) continue;
+    if (!src[RESOLVED]) validateSource(src);
     for (const [k, v] of Object.entries(src)) {
       if (k === "roster" || k === "extraPatterns" || k === "allow" || k === "allowDomains") {
         out[k] = [...out[k], ...(v ?? [])];
@@ -159,11 +349,16 @@ export function loadConfig(paths = DEFAULT_CONFIG_FILES, overrides = {}) {
   const found = [];
   for (const p of paths) {
     if (!existsSync(p)) continue;
+    let parsed;
     try {
-      found.push(JSON.parse(readFileSync(p, "utf8")));
+      parsed = JSON.parse(readFileSync(p, "utf8"));
     } catch (err) {
       throw new Error(`redaction-gate: could not parse config "${p}". ${err.message}`);
     }
+    // Validated per file, with the path as the origin, so a problem points at
+    // the file that has it rather than at the merged result.
+    validateSource(parsed, p);
+    found.push(parsed);
   }
   return resolveConfig(mergeConfigs(...found, overrides));
 }

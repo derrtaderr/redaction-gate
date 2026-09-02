@@ -11,7 +11,7 @@
 export { redact, redactWithCounts } from "./redact.js";
 export { scan, assertClean, RedactionRefusal } from "./gate.js";
 export { guard } from "./middleware.js";
-export { resolveConfig, loadConfig, mergeConfigs, DEFAULT_CONFIG_FILES } from "./config.js";
+export { resolveConfig, loadConfig, mergeConfigs, validateSource, RedactionConfigError, DEFAULT_CONFIG_FILES } from "./config.js";
 export { buildRecord, writeRecord, hashText, VERSION } from "./audit.js";
 export { BUILT_IN_DETECTORS, TLDS } from "./detectors.js";
 export { normalize, NORMALIZERS } from "./normalize.js";
