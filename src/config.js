@@ -64,8 +64,12 @@ function rosterDetector(entry, index, minScanLength) {
   const cls = entry.class ?? "custom";
   const terms = (entry.match ?? entry.terms ?? []).filter((t) => typeof t === "string" && t.length);
   const as = entry.as ?? placeholderFor(cls);
-  // Precise. Word boundaries cannot damage a document.
-  const redact = terms.map((t) => new RegExp(`\\b${escapeRe(t)}\\b`, "gi"));
+  // Precise. Word boundaries cannot damage a document. Longest first, so
+  // "Northwind Robotics" is consumed before a bare "Northwind" can eat its head
+  // and leave "[client] Robotics" behind.
+  const redact = [...terms]
+    .sort((a, b) => b.length - a.length)
+    .map((t) => new RegExp(`\\b${escapeRe(t)}\\b`, "gi"));
   // Paranoid, and only for terms long enough that a substring hit means
   // something. A three letter roster entry would refuse every document.
   const scan = terms
