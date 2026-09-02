@@ -57,15 +57,28 @@ export const BUILT_IN_DETECTORS = [
       { pattern: "\\bgh[pousr]_[A-Za-z0-9]{20,}", flags: "g", via: "despace" },
       { pattern: "\\bAKIA[0-9A-Z]{16}", flags: "g", via: "despace" },
       { pattern: "\\bxox[baprs]-[A-Za-z0-9-]{10,}", flags: "g", via: "despace" },
-      { pattern: SECRET_ASSIGNMENT, flags: "gi", via: "despace" },
     ],
+    // Note what is deliberately absent. The assignment rule is not run against
+    // the despaced copy, because removing spaces glues ordinary prose into one
+    // long run and "the token is a placeholder for something" would refuse
+    // every document that discusses tokens. The paranoid half is allowed to
+    // over-flag, but not to the point where a team switches the gate off.
   },
   {
     name: "email",
     class: "email",
     as: "[email]",
     redact: [{ pattern: EMAIL, flags: "gi" }],
-    scan: [{ pattern: EMAIL, flags: "gi", via: "deobfuscate" }],
+    scan: [
+      { pattern: EMAIL, flags: "gi", via: "deobfuscate" },
+      // Both halves spelled out. Requiring both is what keeps "hosted at
+      // northwind.example" from reading as an address.
+      {
+        pattern: `[A-Za-z0-9._%+-]+\\s+at\\s+[A-Za-z0-9-]+\\s+dot\\s+(?:${TLD_GROUP})\\b`,
+        flags: "gi",
+        via: "raw",
+      },
+    ],
   },
   {
     name: "domain",

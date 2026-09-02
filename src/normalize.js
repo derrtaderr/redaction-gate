@@ -39,11 +39,15 @@ function flatten(src) {
 // Sticky so each rule can be tested at one exact offset. Surrounding whitespace
 // is consumed by the token itself, which is what turns "jane [at] northwind"
 // back into "jane@northwind" rather than "jane @ northwind".
+//
+// The bracketed forms only. A bare " at " is NOT rewritten to "@", because
+// "hosted at northwind.example" is ordinary English and rewriting it turns
+// every sentence containing the word "at" beside a hostname into an address.
+// The all-words evasion is caught instead by a scan pattern that requires both
+// halves to be spelled out, which prose almost never does.
 const OBFUSCATION_RULES = [
   { re: /\s*[[({<]\s*(?:at|@)\s*[\])}>]\s*/iy, to: "@" },
-  { re: /\s+at\s+/iy, to: "@" },
   { re: /\s*[[({<]\s*(?:dot|\.)\s*[\])}>]\s*/iy, to: "." },
-  { re: /\s+dot\s+/iy, to: "." },
 ];
 
 /** Reverse the usual ways an address is written to dodge a matcher. */
