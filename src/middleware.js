@@ -1,4 +1,4 @@
-import { resolveConfig } from "./config.js";
+import { resolveConfig, requireStringSource } from "./config.js";
 import { redactWithCounts } from "./redact.js";
 import { scan, RedactionRefusal, reportWarning } from "./gate.js";
 import { buildRecord, writeRecord } from "./audit.js";
@@ -34,6 +34,21 @@ export function guard(fn, options = {}) {
   return async function guarded(...args) {
     const payload = args[argIndex];
     const source = get(payload);
+    // A non-string source means the scan is meaningless. String(object) is
+    // "[object Object]", which matches no detector, so the gate would pass
+    // everything — a control that looks applied and is not, the exact shape
+    // config refusal already forbids. Fire at call time on the actual source
+    // (get could return a string for one payload and not the next), before the
+    // scan and before set, so a bad wiring never corrupts or leaks. Same shared
+    // helper the primitives route through, so "a source must be a string" has one
+    // definition and the callers cannot drift. See SPEC 12.
+    requireStringSource(source, {
+      origin: "the guard's source",
+      key: "get",
+      verb: "returned",
+      expected: "the string to scan",
+      hint: `guard(fn, { get: (p) => p.body, set: (p, text) => ({ ...p, body: text }) })`,
+    });
     const { text, counts } = redactWithCounts(source, cfg);
     const findings = scan(text, cfg);
     const record = buildRecord({ event: "guard", label, input: source, output: text, counts, findings, cfg });

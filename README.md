@@ -123,9 +123,11 @@ agent refused on one exit that reroutes the same content to another is refused t
 [`example/guard-agent-tool-calls.js`](example/guard-agent-tool-calls.js) runs that sequence,
 and the suite runs it.
 
-`get` and `set` are not optional decoration when the argument is an object. Without them the
-guard stringifies it, scans `[object Object]`, finds nothing and passes everything. Name the
-field that carries the text.
+`get` and `set` are not optional decoration when the argument is an object. The guard requires a
+string source: without a `get` that returns the field to scan, the source is the object itself,
+and rather than stringify it to `[object Object]` and pass everything blind, the guard refuses at
+the first call, names the type it received, and shows the `get`/`set` pair to add. Name the field
+that carries the text.
 
 A runnable version lives in [`example/guard-an-llm-call.js`](example/guard-an-llm-call.js), and
 the test suite runs it, so it cannot rot.
@@ -136,12 +138,18 @@ the test suite runs it, so it cannot rot.
 import { redact, scan, assertClean, guard, createGate, loadConfig } from "redaction-gate";
 
 redact(text, config);        // -> redacted string. Precise. Allowed to miss.
-scan(text, config);          // -> findings[]. Paranoid. Never throws.
+scan(text, config);          // -> findings[]. Paranoid. Never throws on a survivor.
 assertClean(text, config);   // -> text, or throws RedactionRefusal.
 guard(fn, { config });       // -> wrapped fn. Redacts, checks, refuses before calling fn.
 createGate(config);          // -> the four above, bound to one resolved config.
 loadConfig([paths], extra);  // -> config merged from JSON files.
 ```
+
+**Every entry point requires a string source and fails closed on anything else.** `redact`,
+`scan`, `assertClean`, `redactWithCounts` and `guard` all refuse a non-string rather than scan
+`"[object Object]"` and report a false clean pass. The scan is meaningless on a non-string, so the
+whole library treats one as a wiring error and throws, naming the type and never the value. Pass
+the string field to scan, not the object around it.
 
 A finding is `{ class, detector, index, length, line, column }`, and `term` is added only when
 you ask for it.

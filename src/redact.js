@@ -1,4 +1,4 @@
-import { resolveConfig } from "./config.js";
+import { resolveConfig, requireStringSource } from "./config.js";
 
 const flat = (s) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
@@ -24,6 +24,7 @@ export function isAllowed(match, detector, cfg) {
  */
 export function redact(text, config = {}) {
   const cfg = resolveConfig(config);
+  requireStringSource(text, { origin: "the source passed to redact", hint: `pass the string field: redact(value.body, config)` });
   let out = String(text);
   for (const detector of cfg.detectors) {
     for (const re of detector.redact) {
@@ -36,6 +37,7 @@ export function redact(text, config = {}) {
 /** Same pass, plus a per-class count for the compliance log. */
 export function redactWithCounts(text, config = {}) {
   const cfg = resolveConfig(config);
+  requireStringSource(text, { origin: "the source passed to redactWithCounts", hint: `pass the string field: redactWithCounts(value.body, config)` });
   const counts = {};
   let out = String(text);
   for (const detector of cfg.detectors) {
