@@ -123,9 +123,11 @@ agent refused on one exit that reroutes the same content to another is refused t
 [`example/guard-agent-tool-calls.js`](example/guard-agent-tool-calls.js) runs that sequence,
 and the suite runs it.
 
-`get` and `set` are not optional decoration when the argument is an object. Without them the
-guard stringifies it, scans `[object Object]`, finds nothing and passes everything. Name the
-field that carries the text.
+`get` and `set` are not optional decoration when the argument is an object. The guard requires a
+string source: without a `get` that returns the field to scan, the source is the object itself,
+and rather than stringify it to `[object Object]` and pass everything blind, the guard refuses at
+the first call, names the type it received, and shows the `get`/`set` pair to add. Name the field
+that carries the text.
 
 A runnable version lives in [`example/guard-an-llm-call.js`](example/guard-an-llm-call.js), and
 the test suite runs it, so it cannot rot.
