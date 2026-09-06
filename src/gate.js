@@ -1,4 +1,4 @@
-import { resolveConfig } from "./config.js";
+import { resolveConfig, requireStringSource } from "./config.js";
 import { normalize } from "./normalize.js";
 import { isAllowed } from "./redact.js";
 
@@ -63,6 +63,7 @@ function positionOf(src, index) {
  */
 export function scan(text, config = {}) {
   const cfg = resolveConfig(config);
+  requireStringSource(text, { origin: "the source passed to scan", hint: `pass the string field: scan(value.body, config)` });
   const src = String(text);
   const views = new Map();
   const view = (via) => {
@@ -118,6 +119,10 @@ export function scan(text, config = {}) {
  */
 export function assertClean(text, config = {}) {
   const cfg = resolveConfig(config);
+  // Its own check, with its own origin, before it delegates to scan — a safety
+  // assertion that answers "is this clean" must never return a non-string it did
+  // not scan. This is the scariest fail-open of the set: a false pass.
+  requireStringSource(text, { origin: "the source passed to assertClean", hint: `pass the string field: assertClean(value.body, config)` });
   const findings = scan(text, cfg);
   if (findings.length === 0) return text;
   if (cfg.warnOnly) {

@@ -67,6 +67,26 @@ export function describe(value) {
   return `a ${typeof value}`;
 }
 
+/**
+ * The one definition of "a source to scan must be a string", shared by every
+ * public entry point that consumes one — guard, scan, assertClean, redact,
+ * redactWithCounts. A non-string stringifies to "[object Object]", matches no
+ * detector, and would make the scan meaningless, so each caller fails closed
+ * here rather than passing a placeholder. Returns the value when it is a string,
+ * so a caller can write `const s = requireStringSource(text, ...)`.
+ *
+ * The refusal reuses the config-error register — RedactionConfigError, the type
+ * named by describe(), keys and never values, a try-hint — because a non-string
+ * source is a wiring mistake that leaves the caller unprotected, the same class
+ * the config front door already refuses. Each caller passes its own origin, key,
+ * verb and hint so the message stays honest to how the user got there, but the
+ * check itself lives in exactly one place and cannot drift.
+ */
+export function requireStringSource(value, { origin, key = "source", verb = "received", expected = "a string to scan", hint } = {}) {
+  if (typeof value === "string") return value;
+  throw new RedactionConfigError([{ key, detail: `${verb} ${describe(value)}, expected ${expected}`, hint }], origin);
+}
+
 /** Cheap edit distance, only ever run against ten known keys. */
 function nearest(key, candidates) {
   const distance = (a, b) => {
