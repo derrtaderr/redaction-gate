@@ -99,6 +99,34 @@ The second call is the one that matters. `redact` genuinely missed all three ide
 none of them match on a word boundary or a strict pattern. The gate caught them anyway, and the
 model never saw the request.
 
+### The agent tool-call boundary
+
+A model prompt is one way out of a process. An agent with `send_email`, `post_slack` and
+`send_to_crm` has three more, and guarding the prompt while leaving those open protects the
+door and not the windows. So put the wrapper on the tool table rather than on any call site:
+
+```js
+const guarded = Object.fromEntries(
+  Object.entries(tools).map(([name, fn]) => [
+    name,
+    gate.guard(fn, {
+      label: `tool:${name}`,
+      get: (args) => args.body,
+      set: (args, text) => ({ ...args, body: text }),
+    }),
+  ])
+);
+```
+
+Adding a tool to the table adds it to the gate, and there is no second place to remember. An
+agent refused on one exit that reroutes the same content to another is refused there too.
+[`example/guard-agent-tool-calls.js`](example/guard-agent-tool-calls.js) runs that sequence,
+and the suite runs it.
+
+`get` and `set` are not optional decoration when the argument is an object. Without them the
+guard stringifies it, scans `[object Object]`, finds nothing and passes everything. Name the
+field that carries the text.
+
 A runnable version lives in [`example/guard-an-llm-call.js`](example/guard-an-llm-call.js), and
 the test suite runs it, so it cannot rot.
 
