@@ -140,3 +140,36 @@ test("RedactionRefusal built by hand withholds the value too", () => {
   assert.match(new RedactionRefusal(findings).message, /\(18 chars\)/);
   assert.match(new RedactionRefusal(findings, { revealTerms: true }).message, /Northwind Robotics/);
 });
+
+test("the refusal strips the value from findings too, not only from the message", () => {
+  // The test above asserts the message and stopped there, three tests after the one
+  // that names error.findings as the surface a reporter serialises. Inside the
+  // library scan() has already dropped term, so every internal path upheld the
+  // invariant and the hand-built path did not. Enforcing it in the constructor
+  // stops the guarantee depending on who called it.
+  const findings = [{ class: "person", line: 1, column: 5, length: 12, term: "Ada Vasquez" }];
+
+  const withheld = new RedactionRefusal(findings);
+  assert.equal(withheld.findings[0].term, undefined);
+  assert.equal(withheld.findings[0].class, "person");
+  assert.equal(withheld.findings[0].length, 12);
+
+  assert.equal(new RedactionRefusal(findings, { revealTerms: true }).findings[0].term, "Ada Vasquez");
+
+  // The caller's array is not mutated on the way through. It is theirs.
+  assert.equal(findings[0].term, "Ada Vasquez");
+});
+
+test("JSON.stringify of a withheld refusal carries no value anywhere in it", () => {
+  // How an error actually reaches a log aggregator. Asserting on the serialised
+  // form is the claim that matters, rather than on the fields we remembered to check.
+  const err = new RedactionRefusal([
+    { class: "person", line: 1, column: 5, length: 12, term: "Ada Vasquez" },
+    { class: "client", line: 2, column: 9, length: 18, term: "Northwind Robotics" },
+  ]);
+  const wire = JSON.stringify({ message: err.message, findings: err.findings, code: err.code });
+  assert.doesNotMatch(wire, /Ada Vasquez/);
+  assert.doesNotMatch(wire, /Northwind Robotics/);
+  assert.match(wire, /person/);
+  assert.match(wire, /client/);
+});

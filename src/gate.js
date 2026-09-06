@@ -30,7 +30,17 @@ export class RedactionRefusal extends Error {
     );
     this.name = "RedactionRefusal";
     this.code = "REDACTION_REFUSED";
-    this.findings = findings;
+    // THE TYPE ENFORCES THIS, NOT ITS CALLER.
+    //
+    // scan() already drops `term` when revealTerms is off, so every path inside this
+    // library arrived here clean and the invariant looked held. It was held by the
+    // caller. RedactionRefusal is a public export — a custom gate, a test double, a
+    // rethrow can all build one from findings that still carry values, and .findings
+    // is exactly the property an error reporter serialises. Stripping here makes the
+    // guarantee a property of the error rather than of the route taken to it.
+    //
+    // A copy, never a mutation. The caller's array is theirs.
+    this.findings = findings.map(({ term, ...rest }) => (revealTerms ? { ...rest, term } : rest));
   }
 }
 

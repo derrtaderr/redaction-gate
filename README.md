@@ -283,9 +283,17 @@ digest, so someone holding the log can confirm whether a specific known record p
 and can link records across separate logs and across time. For a short, guessable input a
 candidate can simply be hashed and compared.
 
-```json
-{ "audit": { "enabled": true, "path": "logs/compliance.jsonl", "hmacKey": "${REDACTION_AUDIT_KEY}" } }
+```js
+createGate({
+  audit: { enabled: true, path: "logs/compliance.jsonl", hmacKey: process.env.REDACTION_AUDIT_KEY },
+});
 ```
+
+**The key goes in code, not in the JSON config.** Config files are read as plain JSON with no
+environment interpolation, so a `"${REDACTION_AUDIT_KEY}"` written there becomes those literal
+characters and keys your log with a string anyone can read. That is worse than leaving it
+unkeyed, because unkeyed is honestly unkeyed and this looks keyed and is not. Everything else
+about the audit block can live in JSON; the key is the one field that cannot.
 
 The digest fields become `hmac-sha256`, so a reader can tell which scheme wrote which record.
 

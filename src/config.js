@@ -215,7 +215,14 @@ export function validateSource(src, origin = "the config") {
       // An empty string is falsy and would take the unkeyed path while the config
       // says a key was configured. A control that looks applied and is not is the
       // failure this library exists to refuse.
-      add("audit.hmacKey", `expected a non-empty string or null, received ${describe(src.audit.hmacKey)}`, `"hmacKey": "\${REDACTION_AUDIT_KEY}"`);
+      // The example deliberately does NOT show a "${VAR}" form. This loader reads plain
+      // JSON with no interpolation, so that string would become the key, and a hint is
+      // read at the moment someone is looking for something to paste.
+      add(
+        "audit.hmacKey",
+        `expected a non-empty string or null, received ${describe(src.audit.hmacKey)}`,
+        `pass the key in code rather than in JSON: createGate({ audit: { hmacKey: process.env.REDACTION_AUDIT_KEY } })`
+      );
     } else if (src.audit.enabled === true && typeof src.audit.path !== "string") {
       add("audit.path", `is required when audit.enabled is true, received ${describe(src.audit.path)}`, `"path": "logs/compliance.jsonl"`);
     }
