@@ -235,3 +235,81 @@ set to a two second budget on inputs designed to be pathological.
   the redactor misses and the detector catches. The third class is the thesis. If it is missing
   for a detector, that detector is decorative.
 - No vault content, no real client names, no real domains beyond IANA reserved examples.
+
+---
+
+## 10. Egress pass 01 (2026-09-06)
+
+Three changes from external review of the shipped 0.1.0, confirmed against the source before
+any code was written. One is a security defect in this library's own behaviour, one is an
+ergonomics gap that lets a user build a weaker gate by accident, and one is a compliance
+property the log does not currently have.
+
+### 10.1 The refusal must not print what it refused to let out
+
+`config.js:19` and the `RedactionRefusal` constructor at `gate.js:13` both default
+`revealTerms` to `true`, and the message interpolates `JSON.stringify(f.term)`. A library whose
+entire claim is that identifiers do not cross the process boundary currently writes them to
+three places outside the process, by default:
+
+1. **The exception message.** Straight into whatever catches it.
+2. **`error.findings`.** `gate.js:26` attaches the findings array to the error, and each finding
+   carries `term` when `revealTerms` is on. Error reporters serialise custom properties, so the
+   value travels even when nothing logs `err.message`.
+3. **CLI stdout and stderr.** `bin/redaction-gate.js:117` defaults the same way and `:161`
+   formats terms into its output. In CI that lands in build logs, which are typically more
+   widely readable and longer retained than application logs.
+
+So the failure mode is precise and ironic: the gate successfully stops `Ada Vasquez` reaching
+the model, and then sends `Ada Vasquez` to Sentry.
+
+The compliance log already has the right rule and has always had it — `audit.js` writes class,
+line, column and length into `survivors` and never the value, regardless of this setting. The
+care went into the artifact that was consciously designed as a compliance surface and skipped
+the one that was "just an exception."
+
+**Decision: `revealTerms` defaults to `false` on all three surfaces.** A developer opts in
+locally and the opt-in is visible in the code or the command they wrote. This is a breaking
+change to error output and ships alone, in its own commit, for that reason.
+
+### 10.2 `extraTlds`
+
+`detectors.js:20` holds 34 TLDs, deliberately short so a filename such as `index.js` or
+`notes.md` can never be mangled into a company. That reasoning stands and the list stays
+conservative. But `.agency`, `.company`, `.solutions` and `.consulting` are all absent, and a
+company operating on one of them has no obvious way to say so.
+
+An escape hatch already exists: `extraPatterns` (`config.js:304`) compiles both `redact` and
+`scan` with full `via` support, so a wider domain detector is already expressible. The problem
+is that expressing it correctly means hand-writing the HOST regex and remembering
+`via: "deobfuscate"` on the scan half. Forget that and the custom TLD is redacted but not
+paranoid-scanned, which silently removes the asymmetry that is the entire product.
+
+So `extraTlds` adds no capability. It is a way to stop a user building a weaker gate by
+accident, and it feeds the existing HOST and EMAIL patterns so both halves stay in step.
+
+**Rejected: an aggressive `domainMode` that matches any label after a dot.** That reopens the
+filename mangling the short list exists to prevent, and destructive redaction is what gets a
+tool switched off in a week.
+
+### 10.3 Optional keyed audit hashing
+
+`audit.js:20` hashes with unkeyed SHA-256. The reason to offer HMAC is not confidentiality —
+anything with real entropy is not recoverable from a digest — it is **correlation**. An
+identical input always produces an identical digest, so a party holding the log can confirm
+whether a specific known record passed through, and can link records across separate logs and
+across time. For a low-entropy input a candidate can simply be hashed and compared.
+
+**Decision: opt-in, via `audit.hmacKey`.** Unkeyed stays the default, because it is verifiable
+by anyone holding the input and that is a real property for a compliance log.
+
+**The cost, which is documented rather than hidden.** A keyed digest can only be re-derived by
+someone holding that key. Rotate it and every record written before the rotation stops being
+checkable. The algorithm name in the record changes to `hmac-sha256` so a reader can tell which
+records were written under which scheme without guessing.
+
+### Out of scope
+
+First-party OpenAI / Anthropic / AI SDK wrappers, a GitHub Action, and an MCP egress example.
+All are separate packages and a separate decision about what goes public. The core stays tiny,
+synchronous, deterministic and dependency-free.
