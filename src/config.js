@@ -55,7 +55,7 @@ export class RedactionConfigError extends Error {
   }
 }
 
-function describe(value) {
+export function describe(value) {
   if (value === null) return "null";
   if (Array.isArray(value)) return "an array";
   if (typeof value === "object") {
