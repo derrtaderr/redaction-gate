@@ -174,3 +174,27 @@ test("widening the TLD set moves the policy hash, and a no-op widening does not"
   // same hash. Reach is the thing being fingerprinted, not the config text.
   assert.equal(narrow, resolveConfig({ extraTlds: ["com"] }).policyHash);
 });
+
+test("no hint or doc offers a literal as an hmacKey", async () => {
+  // There is no environment interpolation in the JSON loader, so "${VAR}" in a config
+  // file becomes those exact characters. A reader who copies it keys their compliance
+  // log with a string published in this repo, which is worse than unkeyed: unkeyed is
+  // honestly unkeyed, and this looks keyed and is not.
+  const { readFile } = await import("node:fs/promises");
+
+  let hint = "";
+  try {
+    resolveConfig({ audit: { hmacKey: 42 } });
+  } catch (err) {
+    hint = err.message;
+  }
+  assert.match(hint, /hmacKey/, "the guard under test still has to fire");
+  assert.doesNotMatch(hint, /\$\{/, "the hint is what a user pastes while fixing their config");
+
+  const readme = await readFile(new URL("../README.md", import.meta.url), "utf8");
+  for (const line of readme.split("\n")) {
+    if (line.includes("hmacKey") && line.includes("${")) {
+      assert.fail(`README offers a literal as a key: ${line.trim()}`);
+    }
+  }
+});
