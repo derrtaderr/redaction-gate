@@ -464,3 +464,28 @@ hardening.
 **Rejected: an opt-out to scan the stringification anyway.** The repo has no existing "I know,
 scan it anyway" pattern, and inventing one would reopen the exact door this closes. Failing closed
 is the whole point.
+
+### 12.4 The guarantee is the library's, not guard's
+
+Closing the hole in `guard` alone left the class open. `guard` is built on public primitives that
+a caller uses directly, and each one failed open on a non-string in the same way:
+
+- `assertClean(object, cfg)` **returned the object as a clean pass** — a safety assertion named
+  "assert this is clean" handing back a value it never scanned. The scariest of the set.
+- `scan(object, cfg)` returned `[]`, having scanned `"[object Object]"`.
+- `redact(object, cfg)` and `redactWithCounts(object, cfg)` returned `"[object Object]"`, silently
+  mangling the input while the scan was meaningless.
+
+`validateSource` in `config.js` validates the *config*, not the source-to-scan, so its name does
+not cover this. The fix is one shared helper, `requireStringSource(value, { origin, key, verb,
+expected, hint })` in `config.js`, that is the single definition of "a source to scan must be a
+string." Every entry point that consumes a source routes through it — `guard`, `scan`,
+`assertClean`, `redact`, `redactWithCounts` — so the check cannot drift across callers. Each passes
+an `origin` honest to how the caller arrived (`the guard's source`, `the source passed to scan`,
+and so on); the register, the type naming via `describe()`, the keys-not-values rule, and the
+try-hint are shared. A non-string throws `RedactionConfigError`; a string is returned untouched, so
+every string-source path is byte-identical to before.
+
+The guarantee this states: **no public entry point of this library scans, redacts, or asserts a
+non-string source. The scan is meaningless on one, so the library refuses rather than report a
+false result.**
