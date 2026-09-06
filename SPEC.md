@@ -406,3 +406,61 @@ createGate({ audit: { enabled: true, path: "logs/compliance.jsonl", hmacKey: pro
 **Rejected: implementing `${VAR}` interpolation in the JSON loader.** It would make the example
 true, and it would also mean a config file can reach into the environment, which is a capability
 this library has no reason to own and a new class of surprise in a security tool.
+
+## 12. Guard fails closed on a non-string source (2026-09-06)
+
+`guard(fn, options)` takes an optional `get` accessor (default `identityGet = v => v`) that
+extracts the string to scan out of the payload. When the wrapped function takes an object and the
+caller forgets `get`, `source = get(payload)` is that object, `redactWithCounts` and `scan` run on
+`String(object)` = `"[object Object]"`, which matches no detector, and the guard passes everything.
+The README already warned about this in prose. A warning in prose is not a control.
+
+Two failure modes, both reproduced:
+
+- **Corruption.** With the default `set`, the payload the wrapped function receives is replaced
+  with the literal string `"[object Object]"`. Silent breakage.
+- **Leak.** With a `set` that preserves the object — the realistic mistake, writing a scanned
+  field back onto the payload — real PII reaches the wrapped function untouched. An object
+  `{ body: "email Northwind about the renewal" }`, against a roster that matches "Northwind", sent
+  "Northwind" straight through, because the scan saw only `"[object Object]"`.
+
+This is the exact shape the library already refuses for `audit.hmacKey` and for `warnOnly`: a
+control that looks applied and is not. The guard now holds itself to the same bar. **A non-string
+source means the scan is meaningless, so the guard fails closed.**
+
+### 12.1 The decision: call time, on the source, every call
+
+The check cannot fire at `guard()` setup time, because the payload does not exist yet and `get`
+could return a string for one payload and a non-string for the next. It fires at call time, on
+`get(payload)`, on every invocation, before `redactWithCounts`, before `scan`, and before `set`.
+Nothing is stringified, nothing is scanned against a placeholder, nothing is mutated, nothing is
+sent.
+
+### 12.2 The refusal reuses the config-error register
+
+The failure is a wiring mistake, and the library already has a voice for a wiring mistake that
+leaves the caller unprotected: `RedactionConfigError`, which names the offending key, describes
+the received type with `describe()`, echoes a corrected shape as a `try` hint, and closes with
+"Nothing was redacted and nothing was checked." The guard throws that same class, keyed on `get`,
+naming the actual received type and the one-line fix:
+
+```
+redaction-gate: REFUSING TO CONFIGURE. 1 problem in the guard's source.
+  get  returned an object with keys "model", "prompt", expected the string to scan
+       try  guard(fn, { get: (p) => p.body, set: (p, text) => ({ ...p, body: text }) })
+Nothing was redacted and nothing was checked.
+```
+
+No new error style is invented. `describe()` is promoted to an export so the type phrasing is the
+one the config refusals already print, rather than a second dialect of the same sentence.
+
+### 12.3 What does not change
+
+A string source scans exactly as before — the happy path, `get`-returns-string, and the
+default-identity-on-a-string case are all untouched, and the refusal on found PII, `warnOnly`,
+`hmacKey`, and every public export signature are unchanged. This is additive fail-closed
+hardening.
+
+**Rejected: an opt-out to scan the stringification anyway.** The repo has no existing "I know,
+scan it anyway" pattern, and inventing one would reopen the exact door this closes. Failing closed
+is the whole point.
