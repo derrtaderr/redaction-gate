@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { BUILT_IN_DETECTORS, placeholderFor } from "./detectors.js";
+import { BUILT_IN_DETECTORS, placeholderFor, expandTlds } from "./detectors.js";
 
 const RESOLVED = Symbol.for("redaction-gate.resolved");
 
@@ -12,6 +12,7 @@ export const DEFAULT_CONFIG_FILES = [
 const DEFAULTS = {
   roster: [],
   extraPatterns: [],
+  extraTlds: [],
   patterns: {},
   allow: [],
   allowDomains: [],
@@ -161,6 +162,11 @@ export function validateSource(src, origin = "the config") {
     }
   }
 
+  if ("extraTlds" in src) {
+    if (!Array.isArray(src.extraTlds) || src.extraTlds.some((v) => typeof v !== "string" || !v.length)) {
+      add("extraTlds", `expected an array of TLD strings, received ${describe(src.extraTlds)}`, `"extraTlds": ["agency", "solutions"]`);
+    }
+  }
   if ("extraPatterns" in src) {
     if (!Array.isArray(src.extraPatterns)) {
       add("extraPatterns", `expected an array of detector records, received ${describe(src.extraPatterns)}`, `"extraPatterns": [{ "name": "employee_id", "class": "employee", "redact": ["EMP-\\\\d{6}"] }]`);
@@ -233,9 +239,11 @@ export function mergeConfigs(...sources) {
   return out;
 }
 
-function compile(specs, label) {
+function compile(specs, label, extraTlds = []) {
   return (specs ?? []).map((spec) => {
-    const { pattern, flags = "g" } = typeof spec === "string" ? { pattern: spec } : spec;
+    const raw = typeof spec === "string" ? { pattern: spec } : spec;
+    const { flags = "g" } = raw;
+    const pattern = expandTlds(raw.pattern, extraTlds);
     try {
       return new RegExp(pattern, flags.includes("g") ? flags : flags + "g");
     } catch (err) {
@@ -244,10 +252,10 @@ function compile(specs, label) {
   });
 }
 
-function compileScan(specs, label) {
+function compileScan(specs, label, extraTlds = []) {
   return (specs ?? []).map((spec) => {
     const via = spec.via ?? "raw";
-    return { re: compile([spec], label)[0], via };
+    return { re: compile([spec], label, extraTlds)[0], via };
   });
 }
 
@@ -307,8 +315,8 @@ export function resolveConfig(input = {}) {
       class: spec.class ?? spec.name ?? "custom",
       as: spec.as ?? placeholderFor(spec.class ?? spec.name ?? "custom"),
       terms: [],
-      redact: compile(spec.redact, spec.name ?? "custom"),
-      scan: compileScan(spec.scan, spec.name ?? "custom"),
+      redact: compile(spec.redact, spec.name ?? "custom", cfg.extraTlds),
+      scan: compileScan(spec.scan, spec.name ?? "custom", cfg.extraTlds),
     });
   }
   for (const spec of BUILT_IN_DETECTORS) {
@@ -318,8 +326,8 @@ export function resolveConfig(input = {}) {
       class: spec.class,
       as: spec.as,
       terms: [],
-      redact: compile(spec.redact, spec.name),
-      scan: compileScan(spec.scan, spec.name),
+      redact: compile(spec.redact, spec.name, cfg.extraTlds),
+      scan: compileScan(spec.scan, spec.name, cfg.extraTlds),
     });
   }
   cfg.roster.forEach((entry, i) => {
@@ -332,6 +340,10 @@ export function resolveConfig(input = {}) {
     allow: new Set(cfg.allow.map((s) => flatten(s))),
     allowDomains: new Set(cfg.allowDomains.map((s) => s.toLowerCase())),
     minScanLength: cfg.minScanLength,
+    // Carried through so the policy hash moves when the TLD set moves. Two gates
+    // with different reach must not hash alike, or the compliance log claims a
+    // control that was not the one that ran.
+    extraTlds: [...cfg.extraTlds],
     // Strict equality, same reasoning as warnOnly below. Revealing puts the value
     // this library exists to contain into an exception message, an error object and
     // a CI log, so it takes a deliberate `true` and never a truthy accident.
