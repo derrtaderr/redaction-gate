@@ -317,3 +317,37 @@ records were written under which scheme without guessing.
 First-party OpenAI / Anthropic / AI SDK wrappers, a GitHub Action, and an MCP egress example.
 All are separate packages and a separate decision about what goes public. The core stays tiny,
 synchronous, deterministic and dependency-free.
+
+### The mutation check for egress pass 01
+
+Every guard this pass added was reverted in turn against the full suite.
+
+| Mutation | Failures | Caught by |
+|---|---|---|
+| `RedactionRefusal` defaults to revealing again | 1 | the hand-built refusal test |
+| The CLI reveals by default again | 2 | the default-output test and the `--reveal` opt-in test |
+| `expandTlds` ignores `extraTlds` | 2 | the both-halves test and the policy-hash test |
+| `hashText` ignores the key | 2 | both keyed-digest tests |
+| An empty `audit.hmacKey` is accepted | 1 | the empty-key refusal test |
+| `resolveConfig` uses `!== false` for `revealTerms` | **0** | nothing, deliberately — see below |
+
+Two of these caught nothing on the first run and both were defects in the pass rather than in
+the tests.
+
+**The constructor default was genuinely uncovered.** Every call site inside the library passes
+`revealTerms` explicitly, so the default is reachable only from outside — and `RedactionRefusal`
+is a public export, so a custom gate or a rethrow can construct one. A direct test now covers it.
+
+**The `=== true` in `resolveConfig` catches nothing on purpose.** Validation refuses a
+non-boolean `revealTerms` before that line runs, so the value is always a real boolean there and
+strict equality is equivalent to the loose form. The line stays as a second line of defense and
+the comment says so, rather than claiming a protection that validation is already providing.
+Same distinction the retry loop in `webhook-engine` records for its doubled attempt bound: a
+redundancy worth keeping and a redundancy worth believing in are different things, and only the
+comment can tell them apart.
+
+**And one defect no mutation could have found.** The worked example printed `person undefined`
+for every finding once the term was withheld. The example is run by the suite, and its test
+asserts that nothing leaks — which stayed true, because withholding does not leak. Absence of a
+leak and presence of a usable report are two different claims and only the first was being made.
+It was found by running the example and reading the output.
