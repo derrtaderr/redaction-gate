@@ -128,3 +128,15 @@ test("revealTerms true is still available, and is now something the caller wrote
     }
   );
 });
+
+test("RedactionRefusal built by hand withholds the value too", () => {
+  // It is a public export, so someone can construct one directly — a custom gate, a
+  // test double, a rethrow. Every call site inside this library passes revealTerms
+  // explicitly, which means the constructor default is reachable only from outside
+  // and only a direct test covers it. Mutating that default broke nothing until this
+  // existed.
+  const findings = [{ class: "client", line: 1, column: 5, length: 18, term: "Northwind Robotics" }];
+  assert.doesNotMatch(new RedactionRefusal(findings).message, /Northwind Robotics/);
+  assert.match(new RedactionRefusal(findings).message, /\(18 chars\)/);
+  assert.match(new RedactionRefusal(findings, { revealTerms: true }).message, /Northwind Robotics/);
+});

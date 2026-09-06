@@ -349,9 +349,11 @@ export function resolveConfig(input = {}) {
     // with different reach must not hash alike, or the compliance log claims a
     // control that was not the one that ran.
     extraTlds: [...cfg.extraTlds],
-    // Strict equality, same reasoning as warnOnly below. Revealing puts the value
-    // this library exists to contain into an exception message, an error object and
-    // a CI log, so it takes a deliberate `true` and never a truthy accident.
+    // Strict equality as a second line, not the guard. Validation already refuses a
+    // non-boolean `revealTerms`, so by the time this runs the value is a real boolean
+    // and `=== true` is equivalent to `!== false` — mutating it fails nothing, which
+    // is how we know this is not the line under test. It stays because falling closed
+    // costs nothing if a future path ever reaches here unvalidated.
     revealTerms: cfg.revealTerms === true,
     // Strict equality on purpose. A truthy string from an env var or a JSON
     // typo must not be enough to disarm the gate.
