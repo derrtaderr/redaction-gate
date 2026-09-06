@@ -48,9 +48,10 @@ node example/guard-an-llm-call.js
 echo "ticket filed under northwind_robotics by Dr Vasquez" \
   | npx redaction-gate check --config example/roster.json
 # redaction-gate: REFUSING. 2 identifier(s) survived redaction in stdin.
-#   stdin:1:20  client  "northwind_robotics"
-#   stdin:1:42  person  "Dr Vasquez"
+#   stdin:1:20  client  (18 chars)
+#   stdin:1:42  person  (10 chars)
 # exit 2
+# Survivors are reported by position and length, never printed back. Pass --reveal to see them.
 ```
 
 ## Worked example
@@ -86,11 +87,14 @@ await ask("Ada Vasquez at Northwind Robotics asked about Bluebird. Reply to ada@
 try {
   await ask("Ticket filed under northwind_robotics by Dr Vasquez, at ada [at] northwind [dot] example.");
 } catch (err) {
-  console.log(err.name);      // RedactionRefusal
-  console.log(err.findings);
-  // class 'client'   line 1 col 20  "northwind_robotics"   underscored, so no word boundary
-  // class 'person'   line 1 col 42  "Dr Vasquez"           no period, so the strict form missed
-  // class 'residue'  line 1 col 57  "ada [at] [client]"    an address left half redacted
+  console.log(err.name);              // RedactionRefusal
+  console.log(err.findings.length);   // 4
+  // Each finding carries its class and line/column/length, never the matched
+  // text, so logging findings never leaks the value it caught:
+  //   client   line 1 col 20   the roster name, underscored so no word boundary
+  //   person   line 1 col 42   an honorific match the strict form missed
+  //   residue  line 1 col 57   a placeholder welded into the mangled address
+  //   residue  line 1 col 66   the rest of that same half-redacted address
   // callTheModel was never invoked.
 }
 ```
