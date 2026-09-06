@@ -20,7 +20,7 @@ const DEFAULTS = {
   revealTerms: false,
   warnOnly: false,
   onWarn: null,
-  audit: { enabled: false, path: null, label: null, algorithm: "sha256" },
+  audit: { enabled: false, path: null, label: null, algorithm: "sha256", hmacKey: null },
 };
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -211,6 +211,11 @@ export function validateSource(src, origin = "the config") {
   if ("audit" in src) {
     if (src.audit === null || typeof src.audit !== "object" || Array.isArray(src.audit)) {
       add("audit", `expected an object, received ${describe(src.audit)}`, `"audit": { "enabled": true, "path": "logs/compliance.jsonl" }`);
+    } else if ("hmacKey" in src.audit && src.audit.hmacKey !== null && (typeof src.audit.hmacKey !== "string" || !src.audit.hmacKey.length)) {
+      // An empty string is falsy and would take the unkeyed path while the config
+      // says a key was configured. A control that looks applied and is not is the
+      // failure this library exists to refuse.
+      add("audit.hmacKey", `expected a non-empty string or null, received ${describe(src.audit.hmacKey)}`, `"hmacKey": "\${REDACTION_AUDIT_KEY}"`);
     } else if (src.audit.enabled === true && typeof src.audit.path !== "string") {
       add("audit.path", `is required when audit.enabled is true, received ${describe(src.audit.path)}`, `"path": "logs/compliance.jsonl"`);
     }
