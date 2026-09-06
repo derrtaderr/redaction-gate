@@ -351,3 +351,58 @@ for every finding once the term was withheld. The example is run by the suite, a
 asserts that nothing leaks — which stayed true, because withholding does not leak. Absence of a
 leak and presence of a usable report are two different claims and only the first was being made.
 It was found by running the example and reading the output.
+
+---
+
+## 11. Invariant pass (2026-09-06)
+
+Two defects from a second review of the merged egress pass. Both are cases where the fix landed
+and the guarantee did not follow it all the way.
+
+### 11.1 The refusal must strip the value, not rely on its caller having stripped it
+
+`gate.js:33` assigns `this.findings = findings` unchanged. Inside the library that is safe,
+because `scan()` already omits `term` when `revealTerms` is off. Hand-build one and it is not:
+
+```js
+new RedactionRefusal([{ class: "person", term: "Ada Vasquez", ... }])
+```
+
+hides the value in `.message` and keeps it on `.findings[0].term`, which section 10.1 named as
+the surface an error reporter serialises.
+
+**The gap is a layer, not a line.** The invariant was being enforced by the caller rather than by
+the type, so every path that went through `scan()` upheld it and every path that did not, did
+not. `RedactionRefusal` is a public export — a custom gate, a test double, a rethrow can all
+construct one. The constructor now strips `term` itself, and the guarantee stops depending on
+who called it.
+
+Worth recording how it survived: 10.1's own test names `error.findings` as the second egress
+surface, and the direct-constructor test added later asserts only on `.message`. The surface was
+identified and then not checked, in the same file, three tests apart.
+
+### 11.2 The config example told people to use a literal as their key
+
+The README and, worse, the validation hint both showed:
+
+```json
+{ "audit": { "hmacKey": "${REDACTION_AUDIT_KEY}" } }
+```
+
+`loadConfig` reads ordinary JSON and there is no environment interpolation, so `hmacKey` becomes
+the literal seven-character-dollar-brace string. Anyone following it keys their compliance log
+with a value published in this repo's README, which is worse than leaving it unkeyed: unkeyed is
+honestly unkeyed, and this looks keyed and is not.
+
+The validation hint at `config.js:218` is the more dangerous of the two, because it is rendered
+at the exact moment someone is fixing their config and looking for something to paste.
+
+A key belongs in the programmatic form, where the environment lookup is real code:
+
+```js
+createGate({ audit: { enabled: true, path: "logs/compliance.jsonl", hmacKey: process.env.REDACTION_AUDIT_KEY } });
+```
+
+**Rejected: implementing `${VAR}` interpolation in the JSON loader.** It would make the example
+true, and it would also mean a config file can reach into the environment, which is a capability
+this library has no reason to own and a new class of surprise in a security tool.
