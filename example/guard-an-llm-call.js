@@ -39,7 +39,11 @@ try {
 } catch (err) {
   console.log(`   ${err.name}, and the model was called ${sent.length} time(s), not ${sent.length + 1}`);
   for (const f of err.findings) {
-    console.log(`   line ${f.line}, col ${f.column}  ${f.class}  ${JSON.stringify(f.term)}`);
+    // Same shape the refusal message uses. `term` is absent unless revealTerms is
+    // on, and printing `undefined` where a value used to be is not a smaller
+    // disclosure, it is just a worse report.
+    const shown = f.term === undefined ? `(${f.length} chars)` : JSON.stringify(f.term);
+    console.log(`   line ${f.line}, col ${f.column}  ${f.class}  ${shown}`);
   }
 }
 

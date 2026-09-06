@@ -98,7 +98,8 @@ loadConfig(paths, overrides)  // -> merged config from JSON files
 A finding is `{ class, term, index, line, column, length, detector }`. `term` is the matched
 text. It is present because a developer fixing a refusal needs to know what tripped it, and it
 is the one place in the library where sensitive text is surfaced. It never reaches the
-compliance log, and `revealTerms: false` reduces it to a class and a position.
+compliance log, and it is **withheld by default** — see section 10.1. `revealTerms: true` adds
+it back, on all three of the surfaces a refusal reaches.
 
 ## 5. Detectors that ship
 
@@ -200,7 +201,10 @@ Binding rules.
 
 - An unknown top-level key is a refusal, not a shrug. A setting that quietly does nothing is how
   a caller ends up believing they configured something they did not.
-- `warnOnly` and `revealTerms` refuse a non-boolean. Ignoring `warnOnly: "true"` left the caller
+- `warnOnly` and `revealTerms` refuse a non-boolean, and both require a literal `true`.
+- `audit.hmacKey` refuses an empty string, which would be falsy and take the unkeyed path while
+  the config plainly said a key was set.
+- `extraTlds` refuses anything but an array of non-empty strings. Ignoring `warnOnly: "true"` left the caller
   believing the gate was disarmed when it was not, and the reverse misunderstanding is worse.
 - The suggested fix is built from what the caller actually wrote, not from a static example.
 - `loadConfig` validates per file, so the message names the file with the problem.

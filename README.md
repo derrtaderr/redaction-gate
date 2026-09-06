@@ -115,9 +115,15 @@ createGate(config);          // -> the four above, bound to one resolved config.
 loadConfig([paths], extra);  // -> config merged from JSON files.
 ```
 
-A finding is `{ class, detector, term, index, length, line, column }`. `term` is the only place
-the library surfaces sensitive text, because a developer fixing a refusal needs to see what
-tripped it. Set `revealTerms: false` to reduce every finding to a class and a position.
+A finding is `{ class, detector, index, length, line, column }`, and `term` is added only when
+you ask for it.
+
+**The value is withheld by default, because an exception crosses a boundary too.** A refusal
+lands in Sentry, Datadog, CloudWatch or a CI transcript, and stopping an identifier reaching the
+model and then writing it to the error tracker is the same leak through a door nobody watches.
+Class, line, column and length are what you act on at 2am and they are always there. Set
+`revealTerms: true` where the error stream is trusted, and let that choice be visible in the code
+that made it.
 
 ### Middleware around a non-string payload
 
@@ -180,7 +186,8 @@ The identical config as a file, loaded with `loadConfig(["redaction-gate.config.
 | `patterns` | Switch a built-in off by name. |
 | `extraPatterns` | Your own detectors, as records. `redact` is required, `scan` is optional and takes `{ pattern, flags, via }`. |
 | `minScanLength` | How short a roster term can be before the paranoid half stops substring-matching it. Default 4. |
-| `revealTerms` | `false` keeps matched values out of error messages. |
+| `revealTerms` | `true` puts the matched value in the error message, the error object and the CLI output. Off by default; takes a literal `true`. |
+| `extraTlds` | Extra TLDs for the domain and email detectors, e.g. `["agency", "solutions"]`. Widens both halves of the gate together. |
 | `warnOnly` | See below. |
 | `audit` | The compliance log. |
 
@@ -230,7 +237,7 @@ redaction-gate redact [file...]   print redacted text, exit 2 if any survive
   --audit <path>    append a compliance record for this run
   --label <name>    tag the record with a context
   --json            machine-readable report on stdout
-  --no-reveal       report class and position without the matched value
+  --reveal          include the matched value. Off by default
   --warn-only       report and continue, still exits 2
   --exit-zero       with --warn-only, exit 0 as well
 ```
@@ -267,6 +274,27 @@ Hashes and counts and positions go in. Values never do. A log that contains the 
 moved the leak rather than recorded it. `policy.sha256` hashes the resolved ruleset, so a
 reviewer can prove which configuration was in force on a given day without the log carrying your
 roster.
+
+### Keyed hashes, if you need correlation resistance
+
+An unkeyed digest is not reversible for anything with real entropy, so the plain log does not
+leak content. What it does allow is **correlation**: the same input always produces the same
+digest, so someone holding the log can confirm whether a specific known record passed through,
+and can link records across separate logs and across time. For a short, guessable input a
+candidate can simply be hashed and compared.
+
+```json
+{ "audit": { "enabled": true, "path": "logs/compliance.jsonl", "hmacKey": "${REDACTION_AUDIT_KEY}" } }
+```
+
+The digest fields become `hmac-sha256`, so a reader can tell which scheme wrote which record.
+
+**The cost, stated plainly.** A keyed digest can only be re-derived by someone holding that key.
+Rotate it and every record written before the rotation stops being checkable — you keep the
+audit trail, you lose the ability to prove what any earlier line hashed. Unkeyed remains the
+default for exactly that reason: it is verifiable by anyone holding the input, and for most
+compliance uses that is worth more than correlation resistance. `policy.sha256` stays unkeyed
+either way, because it fingerprints a configuration rather than a person.
 
 ## What this does not do
 

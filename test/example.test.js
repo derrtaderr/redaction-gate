@@ -23,3 +23,15 @@ test("the worked example runs, refuses, and leaks nothing into its own output", 
     assert.ok(!log.includes(secret), `the compliance log must not contain ${secret}`);
   }
 });
+
+test("the worked example prints a usable finding, not the word undefined", () => {
+  // The suite asserted the example leaks nothing and it passed, because withholding
+  // the term does not leak. It printed "person undefined" for four findings and no
+  // test noticed, because absence-of-leak and presence-of-useful-output are two
+  // different claims and only the first was being made.
+  const cwd = mkdtempSync(join(tmpdir(), "rg-example-undef-"));
+  const r = spawnSync(process.execPath, [SCRIPT], { cwd, encoding: "utf8" });
+  assert.equal(r.status, 0, r.stderr);
+  assert.doesNotMatch(r.stdout, /undefined/);
+  assert.match(r.stdout, /line 1, col \d+  person  \(\d+ chars\)/);
+});
