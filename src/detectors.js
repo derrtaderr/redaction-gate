@@ -24,7 +24,19 @@ export const TLDS = [
   "example", "test", "invalid", "localhost",
 ];
 
-const TLD_GROUP = TLDS.join("|");
+// The patterns below are built with a token rather than the joined list, because
+// `extraTlds` has to widen the domain and email patterns TOGETHER. Expanding once,
+// centrally, is what keeps the redactor and the paranoid scan in step; a user adding
+// a wider domain pattern by hand can widen one and forget the other, and half a gate
+// reads exactly like a whole one until it misses.
+export const TLD_TOKEN = "__TLDS__";
+const TLD_GROUP = TLD_TOKEN;
+
+/** Substitute the token for the built-in list plus whatever the caller added. */
+export function expandTlds(pattern, extraTlds = []) {
+  const all = [...TLDS, ...extraTlds.map((s) => String(s).toLowerCase().replace(/^\./, ""))];
+  return pattern.split(TLD_TOKEN).join([...new Set(all)].join("|"));
+}
 
 // Every run below is length capped, and the caps are the real limits rather
 // than arbitrary ones. A DNS label is at most 63 characters and an email local

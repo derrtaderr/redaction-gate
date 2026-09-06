@@ -13,14 +13,17 @@ test("assertClean returns the text it was given when nothing survives", () => {
   assert.equal(assertClean(clean, CFG), clean);
 });
 
-test("assertClean refuses rather than warning, and names the class and the term", () => {
+test("assertClean refuses rather than warning, and names the class and the position", () => {
   assert.throws(
     () => assertClean("the Northwind Robotics account renewed", CFG),
     (err) => {
       assert.ok(err instanceof RedactionRefusal);
       assert.equal(err.code, "REDACTION_REFUSED");
       assert.equal(err.findings[0].class, "client");
-      assert.match(err.message, /Northwind Robotics/);
+      assert.match(err.message, /client/);
+      // The term used to be here. It is withheld by default now; the case that it
+      // is still available on request is its own test below.
+      assert.doesNotMatch(err.message, /Northwind Robotics/);
       return true;
     }
   );
@@ -31,7 +34,11 @@ test("a finding carries a line and a column, so it can be found in the source", 
   const [f] = scan(src, CFG);
   assert.equal(f.line, 3);
   assert.equal(f.column, 13);
-  assert.equal(f.term, "Northwind Robotics");
+  assert.equal(f.length, "Northwind Robotics".length, "length stands in for the withheld value");
+  assert.equal(f.term, undefined);
+
+  const [revealed] = scan(src, { ...CFG, revealTerms: true });
+  assert.equal(revealed.term, "Northwind Robotics");
 });
 
 test("revealTerms false keeps the class and the position and drops the value", () => {
@@ -78,4 +85,58 @@ test("no detector uses the same expression for both halves", () => {
       );
     }
   }
+});
+
+test("a refusal does not put the surviving value in the message it throws", () => {
+  // The whole library exists to stop this string crossing a process boundary. An
+  // exception message crosses one: it lands in Sentry, Datadog, CloudWatch, a log
+  // aggregator. Refusing to send the value to the model and then sending it to the
+  // error tracker is not a smaller version of the leak, it is the same leak.
+  assert.throws(
+    () => assertClean("the Northwind Robotics account renewed", CFG),
+    (err) => {
+      assert.ok(err instanceof RedactionRefusal);
+      assert.doesNotMatch(err.message, /Northwind Robotics/);
+      assert.match(err.message, /client/, "the class still has to be there to act on");
+      assert.match(err.message, /line 1, col 5/, "and so does the position");
+      return true;
+    }
+  );
+});
+
+test("a refusal does not carry the surviving value on the error object either", () => {
+  // Error reporters serialise custom properties. A value reachable at err.findings[0].term
+  // travels whether or not anything reads err.message.
+  assert.throws(
+    () => assertClean("the Northwind Robotics account renewed", CFG),
+    (err) => {
+      assert.equal(err.findings[0].term, undefined);
+      assert.equal(err.findings[0].class, "client");
+      assert.ok(err.findings[0].length > 0, "length stands in for the value");
+      return true;
+    }
+  );
+});
+
+test("revealTerms true is still available, and is now something the caller wrote down", () => {
+  assert.throws(
+    () => assertClean("the Northwind Robotics account renewed", { ...CFG, revealTerms: true }),
+    (err) => {
+      assert.match(err.message, /Northwind Robotics/);
+      assert.equal(err.findings[0].term, "Northwind Robotics");
+      return true;
+    }
+  );
+});
+
+test("RedactionRefusal built by hand withholds the value too", () => {
+  // It is a public export, so someone can construct one directly — a custom gate, a
+  // test double, a rethrow. Every call site inside this library passes revealTerms
+  // explicitly, which means the constructor default is reachable only from outside
+  // and only a direct test covers it. Mutating that default broke nothing until this
+  // existed.
+  const findings = [{ class: "client", line: 1, column: 5, length: 18, term: "Northwind Robotics" }];
+  assert.doesNotMatch(new RedactionRefusal(findings).message, /Northwind Robotics/);
+  assert.match(new RedactionRefusal(findings).message, /\(18 chars\)/);
+  assert.match(new RedactionRefusal(findings, { revealTerms: true }).message, /Northwind Robotics/);
 });

@@ -98,3 +98,59 @@ test("the reported version matches the package", () => {
   const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(VERSION, pkg.version);
 });
+
+test("an unkeyed digest is guessable for a low-entropy input, which is the reason hmacKey exists", () => {
+  // Not a confidentiality break — a digest of high-entropy text is not reversible.
+  // The exposure is CORRELATION. An identical input always produces an identical
+  // digest, so a party holding the log can confirm whether a specific known record
+  // passed through, and can link records across logs and across time.
+  const cfg = resolveConfig(CFG);
+  const record = buildRecord({ event: "check", input: "ada@northwind.example", output: "[email]", cfg });
+  const guess = createHash("sha256").update("ada@northwind.example").digest("hex");
+  assert.equal(record.input.sha256, guess, "a candidate can simply be hashed and compared");
+});
+
+test("hmacKey keys the digests, so the same input no longer hashes to a knowable value", () => {
+  const cfg = resolveConfig({ ...CFG, audit: { hmacKey: "k1" } });
+  const record = buildRecord({ event: "check", input: "ada@northwind.example", output: "[email]", cfg });
+
+  const guess = createHash("sha256").update("ada@northwind.example").digest("hex");
+  assert.notEqual(record.input["hmac-sha256"], guess);
+  assert.equal(record.input.sha256, undefined, "the unkeyed digest must not sit beside it");
+  assert.equal(record.output.sha256, undefined);
+  assert.ok(record.output["hmac-sha256"]);
+});
+
+test("a different key gives a different digest for the same input, which is the correlation break", () => {
+  const one = buildRecord({
+    event: "check", input: "ada@northwind.example", output: "x",
+    cfg: resolveConfig({ ...CFG, audit: { hmacKey: "k1" } }),
+  });
+  const two = buildRecord({
+    event: "check", input: "ada@northwind.example", output: "x",
+    cfg: resolveConfig({ ...CFG, audit: { hmacKey: "k2" } }),
+  });
+  assert.notEqual(one.input["hmac-sha256"], two.input["hmac-sha256"]);
+});
+
+test("the policy fingerprint stays unkeyed, because it identifies a config and not a person", () => {
+  // Keying it would cost the one property it has: anyone holding the config can
+  // recompute it and confirm which policy ran. There is nothing in it to correlate.
+  const cfg = resolveConfig({ ...CFG, audit: { hmacKey: "k1" } });
+  const record = buildRecord({ event: "check", input: "a", output: "a", cfg });
+  assert.equal(record.policy.sha256, cfg.policyHash);
+  assert.equal(record.policy["hmac-sha256"], undefined);
+});
+
+test("an empty hmacKey is refused rather than silently falling back to unkeyed", () => {
+  // The failure class this repo already guards elsewhere: a setting that looks
+  // applied and is not. An empty string is falsy, so it would take the unkeyed path
+  // while the config file plainly says a key was configured.
+  assert.throws(
+    () => resolveConfig({ ...CFG, audit: { hmacKey: "" } }),
+    (err) => {
+      assert.match(err.message, /audit\.hmacKey/);
+      return true;
+    }
+  );
+});

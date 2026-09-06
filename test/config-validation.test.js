@@ -150,3 +150,27 @@ test("the shipped example config still resolves, so validation rejects nothing v
   const cfg = loadConfig([path]);
   assert.ok(cfg.detectors.length > 0);
 });
+
+test("a misshapen extraTlds refuses at the boundary with an example to copy", () => {
+  assert.throws(
+    () => resolveConfig({ extraTlds: "agency" }),
+    (err) => {
+      assert.match(err.message, /extraTlds/);
+      assert.match(err.message, /agency/, "the message carries a form the user can paste");
+      return true;
+    }
+  );
+});
+
+test("widening the TLD set moves the policy hash, and a no-op widening does not", () => {
+  // The compliance log records which policy ran, so two gates with different reach
+  // must not hash alike. The hash moves because the compiled detector patterns are
+  // what canonical() serialises — the TLD list is not carried separately, and adding
+  // it there changed nothing when tested.
+  const narrow = resolveConfig({}).policyHash;
+  assert.notEqual(narrow, resolveConfig({ extraTlds: ["agency"] }).policyHash);
+
+  // A TLD already in the built-in list produces the same gate, so it must produce the
+  // same hash. Reach is the thing being fingerprinted, not the config text.
+  assert.equal(narrow, resolveConfig({ extraTlds: ["com"] }).policyHash);
+});

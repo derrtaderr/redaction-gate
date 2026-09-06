@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { redact } from "../src/redact.js";
+import { scan } from "../src/gate.js";
 
 // Fictional throughout. northwind-robotics.example uses the IANA reserved
 // `.example` TLD, which can never belong to anyone.
@@ -83,4 +84,33 @@ test("ip, a v4 address is replaced", () => {
 test("ip, version strings and dotted dates do not trip it", () => {
   const src = "upgraded to v1.22.3 on 2026.01.04 with build 10.15";
   assert.equal(redact(src, CFG), src);
+});
+
+test("a TLD outside the built-in list is left alone, which is the documented tradeoff", () => {
+  // Not a bug. The list is short so `index.js` and `notes.md` can never be mangled
+  // into a company. This test pins the cost of that choice so the next test can show
+  // the escape hatch closing it.
+  const cfg = {};
+  assert.equal(redact("hosted at northwind.agency today", cfg), "hosted at northwind.agency today");
+  assert.deepEqual(scan("hosted at northwind.agency today", cfg), []);
+});
+
+test("extraTlds widens both halves of the gate, not just the redactor", () => {
+  // The failure this prevents: a user adds a wider domain pattern through
+  // extraPatterns, forgets `via: "deobfuscate"` on the scan half, and ends up with a
+  // redactor that handles the plain form and a paranoid scan that no longer covers
+  // it. Half a gate reads exactly like a whole one until it misses.
+  const cfg = { extraTlds: ["agency"] };
+
+  assert.equal(redact("hosted at northwind.agency today", cfg), "hosted at [domain] today");
+  assert.equal(scan("hosted at northwind[dot]agency today", cfg).length, 1, "the paranoid half too");
+  assert.equal(scan("hosted at northwind[dot]agency today", cfg)[0].class, "domain");
+
+  // And the email pattern is built from the same group, so it widens in step.
+  assert.equal(redact("write to ada@northwind.agency", cfg), "write to [email]");
+});
+
+test("extraTlds does not disturb the filenames the short list exists to protect", () => {
+  const cfg = { extraTlds: ["agency"] };
+  assert.equal(redact("see index.js and notes.md", cfg), "see index.js and notes.md");
 });

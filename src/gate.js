@@ -6,11 +6,18 @@ import { isAllowed } from "./redact.js";
  * Thrown when redaction missed. The whole library exists to produce this.
  *
  * `findings` is the machine-readable half. The message is the half a developer
- * reads at 2am, so it names what survived and where, unless `revealTerms` is
- * false and the caller has decided even the error stream is untrusted.
+ * reads at 2am, so it names the class and the position — the two things they act
+ * on — and by default not the value.
+ *
+ * THE VALUE IS WITHHELD BY DEFAULT BECAUSE AN EXCEPTION CROSSES A BOUNDARY. It
+ * lands in Sentry, Datadog, CloudWatch, a log aggregator, a CI transcript. Stopping
+ * an identifier reaching the model and then writing it to the error tracker is not
+ * a smaller leak, it is the same leak through a door nobody was watching. Set
+ * `revealTerms: true` where the error stream is trusted, and let that decision be
+ * visible in the code that made it.
  */
 export class RedactionRefusal extends Error {
-  constructor(findings, { revealTerms = true } = {}) {
+  constructor(findings, { revealTerms = false } = {}) {
     const lines = findings.map((f) =>
       revealTerms
         ? `  line ${f.line}, col ${f.column}  ${f.class}  ${JSON.stringify(f.term)}`

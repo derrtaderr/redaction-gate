@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { BUILT_IN_DETECTORS, placeholderFor } from "./detectors.js";
+import { BUILT_IN_DETECTORS, placeholderFor, expandTlds } from "./detectors.js";
 
 const RESOLVED = Symbol.for("redaction-gate.resolved");
 
@@ -12,14 +12,15 @@ export const DEFAULT_CONFIG_FILES = [
 const DEFAULTS = {
   roster: [],
   extraPatterns: [],
+  extraTlds: [],
   patterns: {},
   allow: [],
   allowDomains: [],
   minScanLength: 4,
-  revealTerms: true,
+  revealTerms: false,
   warnOnly: false,
   onWarn: null,
-  audit: { enabled: false, path: null, label: null, algorithm: "sha256" },
+  audit: { enabled: false, path: null, label: null, algorithm: "sha256", hmacKey: null },
 };
 
 const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -161,6 +162,11 @@ export function validateSource(src, origin = "the config") {
     }
   }
 
+  if ("extraTlds" in src) {
+    if (!Array.isArray(src.extraTlds) || src.extraTlds.some((v) => typeof v !== "string" || !v.length)) {
+      add("extraTlds", `expected an array of TLD strings, received ${describe(src.extraTlds)}`, `"extraTlds": ["agency", "solutions"]`);
+    }
+  }
   if ("extraPatterns" in src) {
     if (!Array.isArray(src.extraPatterns)) {
       add("extraPatterns", `expected an array of detector records, received ${describe(src.extraPatterns)}`, `"extraPatterns": [{ "name": "employee_id", "class": "employee", "redact": ["EMP-\\\\d{6}"] }]`);
@@ -205,6 +211,11 @@ export function validateSource(src, origin = "the config") {
   if ("audit" in src) {
     if (src.audit === null || typeof src.audit !== "object" || Array.isArray(src.audit)) {
       add("audit", `expected an object, received ${describe(src.audit)}`, `"audit": { "enabled": true, "path": "logs/compliance.jsonl" }`);
+    } else if ("hmacKey" in src.audit && src.audit.hmacKey !== null && (typeof src.audit.hmacKey !== "string" || !src.audit.hmacKey.length)) {
+      // An empty string is falsy and would take the unkeyed path while the config
+      // says a key was configured. A control that looks applied and is not is the
+      // failure this library exists to refuse.
+      add("audit.hmacKey", `expected a non-empty string or null, received ${describe(src.audit.hmacKey)}`, `"hmacKey": "\${REDACTION_AUDIT_KEY}"`);
     } else if (src.audit.enabled === true && typeof src.audit.path !== "string") {
       add("audit.path", `is required when audit.enabled is true, received ${describe(src.audit.path)}`, `"path": "logs/compliance.jsonl"`);
     }
@@ -233,9 +244,11 @@ export function mergeConfigs(...sources) {
   return out;
 }
 
-function compile(specs, label) {
+function compile(specs, label, extraTlds = []) {
   return (specs ?? []).map((spec) => {
-    const { pattern, flags = "g" } = typeof spec === "string" ? { pattern: spec } : spec;
+    const raw = typeof spec === "string" ? { pattern: spec } : spec;
+    const { flags = "g" } = raw;
+    const pattern = expandTlds(raw.pattern, extraTlds);
     try {
       return new RegExp(pattern, flags.includes("g") ? flags : flags + "g");
     } catch (err) {
@@ -244,10 +257,10 @@ function compile(specs, label) {
   });
 }
 
-function compileScan(specs, label) {
+function compileScan(specs, label, extraTlds = []) {
   return (specs ?? []).map((spec) => {
     const via = spec.via ?? "raw";
-    return { re: compile([spec], label)[0], via };
+    return { re: compile([spec], label, extraTlds)[0], via };
   });
 }
 
@@ -307,8 +320,8 @@ export function resolveConfig(input = {}) {
       class: spec.class ?? spec.name ?? "custom",
       as: spec.as ?? placeholderFor(spec.class ?? spec.name ?? "custom"),
       terms: [],
-      redact: compile(spec.redact, spec.name ?? "custom"),
-      scan: compileScan(spec.scan, spec.name ?? "custom"),
+      redact: compile(spec.redact, spec.name ?? "custom", cfg.extraTlds),
+      scan: compileScan(spec.scan, spec.name ?? "custom", cfg.extraTlds),
     });
   }
   for (const spec of BUILT_IN_DETECTORS) {
@@ -318,8 +331,8 @@ export function resolveConfig(input = {}) {
       class: spec.class,
       as: spec.as,
       terms: [],
-      redact: compile(spec.redact, spec.name),
-      scan: compileScan(spec.scan, spec.name),
+      redact: compile(spec.redact, spec.name, cfg.extraTlds),
+      scan: compileScan(spec.scan, spec.name, cfg.extraTlds),
     });
   }
   cfg.roster.forEach((entry, i) => {
@@ -332,7 +345,16 @@ export function resolveConfig(input = {}) {
     allow: new Set(cfg.allow.map((s) => flatten(s))),
     allowDomains: new Set(cfg.allowDomains.map((s) => s.toLowerCase())),
     minScanLength: cfg.minScanLength,
-    revealTerms: cfg.revealTerms !== false,
+    // Carried through so the policy hash moves when the TLD set moves. Two gates
+    // with different reach must not hash alike, or the compliance log claims a
+    // control that was not the one that ran.
+    extraTlds: [...cfg.extraTlds],
+    // Strict equality as a second line, not the guard. Validation already refuses a
+    // non-boolean `revealTerms`, so by the time this runs the value is a real boolean
+    // and `=== true` is equivalent to `!== false` — mutating it fails nothing, which
+    // is how we know this is not the line under test. It stays because falling closed
+    // costs nothing if a future path ever reaches here unvalidated.
+    revealTerms: cfg.revealTerms === true,
     // Strict equality on purpose. A truthy string from an env var or a JSON
     // typo must not be enough to disarm the gate.
     warnOnly: cfg.warnOnly === true,
