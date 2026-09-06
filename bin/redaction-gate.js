@@ -26,7 +26,7 @@ Reads stdin when no file is given.
   --audit <path>    append a compliance record for this run
   --label <name>    tag the compliance record with a context
   --json            report as JSON on stdout
-  --no-reveal       report the class and position without the matched value
+  --reveal          include the matched value in the report. Off by default
   --warn-only       report and continue instead of refusing, still exits 2
   --exit-zero       with --warn-only, exit 0 as well. Two flags, on purpose
   --help, --version
@@ -35,7 +35,7 @@ Exit codes: 0 clean, 1 usage error, 2 refused.
 `;
 
 const FLAGS_WITH_VALUES = new Set(["--config", "--audit", "--label"]);
-const BOOLEAN_FLAGS = new Set(["--json", "--no-reveal", "--warn-only", "--exit-zero", "--help", "--version"]);
+const BOOLEAN_FLAGS = new Set(["--json", "--reveal", "--warn-only", "--exit-zero", "--help", "--version"]);
 
 function parseArgs(argv) {
   const opts = { command: null, files: [], configs: [], audit: null, label: null };
@@ -114,7 +114,7 @@ function main(argv) {
   try {
     cfg = loadConfig(opts.configs.length ? opts.configs : undefined, {
       warnOnly: opts.warnOnly === true,
-      revealTerms: opts.noReveal !== true,
+      revealTerms: opts.reveal === true,
       audit: { enabled: Boolean(opts.audit), path: opts.audit ?? null, label: opts.label ?? null },
     });
   } catch (err) {

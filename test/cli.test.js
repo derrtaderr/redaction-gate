@@ -63,10 +63,12 @@ test("warn-only alone still exits non-zero, and needs a second flag to go quiet"
   assert.match(silent.stderr, /client/, "the findings are still reported");
 });
 
-test("no-reveal keeps the term out of the output stream", () => {
+test("--no-reveal is gone, because withholding is what happens without a flag", () => {
+  // Asserted rather than deleted. A flag that silently becomes a no-op is worse than
+  // one that errors, because a pipeline still passing it believes it is being careful.
   const r = run(["check", "--config", CONFIG, "--no-reveal"], "northwind_robotics\n");
-  assert.ok(!r.stderr.includes("northwind_robotics"));
-  assert.match(r.stderr, /client/);
+  assert.equal(r.status, 1, "an unknown flag is a usage error");
+  assert.match(r.stderr, /unknown flag --no-reveal/);
 });
 
 test("the audit flag writes a compliance record", () => {
@@ -98,4 +100,25 @@ test("a config path that does not exist is an error, not a quiet under-protectio
   const r = run(["check", "--config", join(dir, "typo.json")], "filed under northwind_robotics\n");
   assert.equal(r.status, 1);
   assert.match(r.stderr, /typo\.json/);
+});
+
+test("check does not print the surviving value by default", () => {
+  // CI logs are usually more widely readable and longer retained than application
+  // logs, so the CLI is the worst of the three surfaces, not the least important.
+  const r = run(["check", "--config", CONFIG], "filed under northwind_robotics/notes\n");
+  assert.equal(r.status, 2);
+  assert.match(r.stderr, /client/, "the class and position still have to be actionable");
+  assert.doesNotMatch(r.stderr, /northwind_robotics/);
+  assert.doesNotMatch(r.stdout, /northwind_robotics/);
+});
+
+test("--reveal opts back in, and the JSON report follows the same rule", () => {
+  const r = run(["check", "--config", CONFIG, "--reveal"], "filed under northwind_robotics/notes\n");
+  assert.match(r.stderr, /northwind_robotics/);
+
+  const quiet = run(["check", "--config", CONFIG, "--json"], "filed under northwind_robotics/notes\n");
+  assert.equal(JSON.parse(quiet.stdout).findings[0].term, undefined);
+
+  const loud = run(["check", "--config", CONFIG, "--json", "--reveal"], "filed under northwind_robotics/notes\n");
+  assert.equal(JSON.parse(loud.stdout).findings[0].term, "northwind_robotics");
 });

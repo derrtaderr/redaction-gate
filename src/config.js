@@ -16,7 +16,7 @@ const DEFAULTS = {
   allow: [],
   allowDomains: [],
   minScanLength: 4,
-  revealTerms: true,
+  revealTerms: false,
   warnOnly: false,
   onWarn: null,
   audit: { enabled: false, path: null, label: null, algorithm: "sha256" },
@@ -332,7 +332,10 @@ export function resolveConfig(input = {}) {
     allow: new Set(cfg.allow.map((s) => flatten(s))),
     allowDomains: new Set(cfg.allowDomains.map((s) => s.toLowerCase())),
     minScanLength: cfg.minScanLength,
-    revealTerms: cfg.revealTerms !== false,
+    // Strict equality, same reasoning as warnOnly below. Revealing puts the value
+    // this library exists to contain into an exception message, an error object and
+    // a CI log, so it takes a deliberate `true` and never a truthy accident.
+    revealTerms: cfg.revealTerms === true,
     // Strict equality on purpose. A truthy string from an env var or a JSON
     // typo must not be enough to disarm the gate.
     warnOnly: cfg.warnOnly === true,
